@@ -1,0 +1,13 @@
+{
+  "name": "inspirenavada",
+  "compatibility_date": "2026-07-02",
+  "assets": {
+    "directory": "./"
+  },
+  "routes": [
+    {
+      "pattern": "inspirenavada.inspire-edge.net",
+      "custom_domain": true
+    }
+  ]
+}
