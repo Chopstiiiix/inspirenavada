@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Offline-First Challenge — InspireNavada</title>
+  <meta name="description" content="Build software that survives a dead connection. $12,000 prize pool, teams of 1–4, scored in public. Hackathon № 032 on InspireNavada." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23F7F4EC'/><text x='8' y='14' text-anchor='middle' font-size='17' font-family='Georgia,serif' fill='%23C8102E'>*</text></svg>" />
+</head>
+<body>
+
+  <div class="tape" aria-hidden="true">
+    <div class="tape__track">
+      <span>№ 032 — the offline-first challenge</span><i>·</i>
+      <span>$12,000 prize pool</span><i>·</i>
+      <span>642 entries from 219 teams</span><i>·</i>
+      <span>current top score 94.821</span><i>·</i>
+      <span>median 71.4</span><i>·</i>
+      <span>latest submission 41s ago</span><i>·</i>
+      <span>№ 032 — the offline-first challenge</span><i>·</i>
+      <span>$12,000 prize pool</span><i>·</i>
+      <span>642 entries from 219 teams</span><i>·</i>
+      <span>current top score 94.821</span><i>·</i>
+      <span>median 71.4</span><i>·</i>
+      <span>latest submission 41s ago</span><i>·</i>
+    </div>
+  </div>
+
+  <header class="masthead">
+    <a class="wordmark" href="index.html">inspirenavada<sup>*</sup></a>
+    <nav class="nav" aria-label="Primary">
+      <a href="hackathons.html" class="is-active" aria-current="page">Hackathons</a>
+      <a href="standings.html">Standings</a>
+      <a href="ranks.html">Ranks</a>
+      <a href="community.html">Community</a>
+      <a href="about.html">About</a>
+    </nav>
+    <div class="masthead__actions">
+      <a class="btn btn--ghost" href="#">Sign in</a>
+      <a class="btn btn--ink" href="#">Join free</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <p class="crumb"><a href="index.html">Home</a> / <a href="hackathons.html">Hackathons</a> / № 032</p>
+      <h1>The Offline-First Challenge</h1>
+      <p class="lede">Build software that survives a dead connection — and stays genuinely useful until it comes back. Any stack, teams of 1–4, scored in public against an automated resilience suite.</p>
+    </div>
+
+    <dl class="facts">
+      <div class="facts__grid">
+        <div><dt>Status</dt><dd><span class="status status--open">Open</span></dd></div>
+        <div><dt>Prize pool</dt><dd>$12,000</dd></div>
+        <div><dt>Entries</dt><dd>642 · 219 teams</dd></div>
+        <div><dt>Closes in</dt><dd class="countdown" data-deadline="2026-07-19T23:59:00Z">—</dd></div>
+        <div><dt>Track</dt><dd>Engineering</dd></div>
+      </div>
+    </dl>
+
+    <div class="cta-strip" style="padding-bottom: 1.5rem;">
+      <a class="btn btn--red" href="#">Enter this hackathon</a>
+      <a class="link-arrow" href="community.html#teams">Need a team? Use the finder</a>
+    </div>
+
+    <nav class="tabbar" role="tablist" aria-label="Hackathon sections">
+      <button type="button" class="is-active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+      <button type="button" data-tab="rules" role="tab" aria-selected="false">Rules</button>
+      <button type="button" data-tab="prizes" role="tab" aria-selected="false">Prizes &amp; judging</button>
+      <button type="button" data-tab="discussion" role="tab" aria-selected="false">Discussion</button>
+      <a href="standings.html">Standings ↗</a>
+    </nav>
+
+    <!-- ── overview ────────────────────────────────────── -->
+    <section class="section tab-panel is-active" id="panel-overview" style="border-top: none;">
+      <div class="prose">
+        <h3>The brief</h3>
+        <p>Most software quietly assumes the network is always there. This month, we pull the plug. Your task is to build something people would actually use — a note-taking tool, a field survey app, a code editor extension, a game, anything — that treats connectivity as a luxury, not a requirement.</p>
+        <p>Your submission runs against our automated resilience harness: it will be started offline, interrupted mid-sync, fed conflicting edits from two devices, and left in airplane mode for 72 simulated hours. What it does in those moments is most of your score.</p>
+
+        <h3>What good looks like</h3>
+        <ul>
+          <li><strong>Full function offline.</strong> Core features work with zero connectivity from first launch — not just cached leftovers from a previous session.</li>
+          <li><strong>Honest sync.</strong> When the connection returns, merges are predictable and conflicts are surfaced to the user, never silently dropped.</li>
+          <li><strong>No lies in the UI.</strong> The interface tells the truth about what's saved, what's pending, and what failed.</li>
+        </ul>
+
+        <h3>Timeline</h3>
+        <ul class="timeline">
+          <li class="is-done"><span>Registration opens</span><span>Jun 14 2026</span></li>
+          <li class="is-done"><span>Hackathon opens, harness available</span><span>Jun 21 2026</span></li>
+          <li><span>Team lock — no roster changes after</span><span>Jul 12 2026</span></li>
+          <li><span>Final submissions close</span><span>Jul 19 2026 · 23:59 UTC</span></li>
+          <li><span>Peer review window</span><span>Jul 20 – 26 2026</span></li>
+          <li><span>Winners announced</span><span>Jul 28 2026</span></li>
+        </ul>
+
+        <h3>Starter kit</h3>
+        <p>The harness runs locally so you can score yourself before you submit. Clone it, run it against the sample app, then break things on purpose:</p>
+        <ul>
+          <li>Resilience harness + scoring spec (same code we run server-side)</li>
+          <li>A deliberately fragile sample app to practice on</li>
+          <li>Reading list: CRDTs, service workers, sync engines — curated by past winners</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ── rules ───────────────────────────────────────── -->
+    <section class="section tab-panel" id="panel-rules" style="border-top: none;">
+      <div class="prose">
+        <h3>Teams</h3>
+        <ul>
+          <li>Teams of 1–4. Solo entries compete on the same leaderboard — four of the last ten podiums were solo.</li>
+          <li>Rosters lock on Jul 12. You can merge teams before then; you cannot split after.</li>
+          <li>One team per person. Entering twice under different names forfeits both entries.</li>
+        </ul>
+
+        <h3>Submissions</h3>
+        <ul>
+          <li>Up to 5 scored submissions per team per day. Your best score counts, not your last.</li>
+          <li>All code must be written during the event window. Libraries and frameworks are fine; pre-built products are not.</li>
+          <li>AI-assisted coding is allowed and unremarkable. You own every line you submit and must be able to explain it in review.</li>
+          <li>Winning entries must publish their source within 30 days under any OSI-approved license.</li>
+        </ul>
+
+        <h3>Fair play</h3>
+        <ul>
+          <li>Probing the harness for exploits instead of building resilience scores zero and we will notice — the private test set differs from the public one.</li>
+          <li>Peer reviews are double-blind. Coordinating reviews with other teams forfeits rank points for the season.</li>
+          <li>The <a href="community.html#conduct" style="border-bottom: 1px solid var(--hairline);">code of conduct</a> applies everywhere: submissions, discussion boards, voice rooms.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ── prizes ──────────────────────────────────────── -->
+    <section class="section tab-panel" id="panel-prizes" style="border-top: none;">
+      <div class="prose">
+        <h3>Prize pool — $12,000</h3>
+      </div>
+      <div class="table-wrap" style="max-width: 44rem;">
+        <table class="board board--points">
+          <thead>
+            <tr><th>Place</th><th class="num">Cash</th><th class="num">Rank points</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>First place</td><td class="num">$6,000</td><td class="num">500</td></tr>
+            <tr><td>Second place</td><td class="num">$3,000</td><td class="num">350</td></tr>
+            <tr><td>Third place</td><td class="num">$1,500</td><td class="num">250</td></tr>
+            <tr><td>Best solo entry</td><td class="num">$500</td><td class="num">150</td></tr>
+            <tr><td>Best write-up</td><td class="num">$500</td><td class="num">150</td></tr>
+            <tr><td>Community pick</td><td class="num">$500</td><td class="num">150</td></tr>
+            <tr><td>Every top-40% finish</td><td class="num">—</td><td class="num">60</td></tr>
+            <tr><td>Every scored submission</td><td class="num">—</td><td class="num">2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="prose" style="margin-top: 2rem;">
+        <h3>How scoring works</h3>
+        <p><strong>70% automated.</strong> The resilience harness scores cold-start behaviour, sync correctness, conflict handling and data integrity. It runs on every submission and posts to the public standings within minutes.</p>
+        <p><strong>30% peer review.</strong> After close, each team reviews three anonymised finalists against a fixed rubric: usefulness, honesty of the UI, and quality of the write-up. Review scores are themselves reviewed — careless reviewing costs points.</p>
+        <p>Public standings during the event use a fixed public test set. Final placement uses a private set revealed only after close, so the leaderboard you chase is honest but never the whole story.</p>
+      </div>
+    </section>
+
+    <!-- ── discussion ──────────────────────────────────── -->
+    <section class="section tab-panel" id="panel-discussion" style="border-top: none;">
+      <div class="prose" style="margin-bottom: 1.6rem;">
+        <h3>Discussion board</h3>
+        <p>Questions, harness bug reports, and the traditional mid-event despair thread. Organisers answer daily; past winners lurk generously.</p>
+      </div>
+      <div class="threads" style="max-width: 52rem;">
+        <div class="thread">
+          <div><a href="#">Harness marks my sync as lossy but the data is all there — ordering issue?</a><small>started by @deskrejected · answered by organiser</small></div>
+          <span class="mono-sm">23 replies</span>
+          <span class="mono-sm">14m ago</span>
+        </div>
+        <div class="thread">
+          <div><a href="#">PSA: the 72-hour airplane-mode test also cycles the system clock</a><small>started by @tunde_builds</small></div>
+          <span class="mono-sm">41 replies</span>
+          <span class="mono-sm">2h ago</span>
+        </div>
+        <div class="thread">
+          <div><a href="#">CRDT vs. last-write-wins — what are the top teams actually using?</a><small>started by @mereb.dev</small></div>
+          <span class="mono-sm">67 replies</span>
+          <span class="mono-sm">5h ago</span>
+        </div>
+        <div class="thread">
+          <div><a href="#">Team of 2 looking for someone who has touched service workers in anger</a><small>started by @quietlyshipping · team finder linked</small></div>
+          <span class="mono-sm">12 replies</span>
+          <span class="mono-sm">9h ago</span>
+        </div>
+        <div class="thread">
+          <div><a href="#">Weekly despair thread № 3 — post your worst sync bug</a><small>started by organiser · pinned</small></div>
+          <span class="mono-sm">104 replies</span>
+          <span class="mono-sm">1d ago</span>
+        </div>
+      </div>
+      <p class="table-foot mono-sm">Sign in to post · boards are read-only for guests</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer__top">
+      <div class="footer__brand">
+        <a class="wordmark" href="index.html">inspirenavada<sup>*</sup></a>
+        <p class="footer__tag"><sup>*</sup>a home ground for young builders. Online everywhere, headquartered nowhere.</p>
+      </div>
+      <nav class="footer__cols" aria-label="Footer">
+        <div>
+          <h4 class="mono-sm">Compete</h4>
+          <a href="hackathons.html">Open hackathons</a>
+          <a href="standings.html">Standings</a>
+          <a href="ranks.html">Ranking system</a>
+          <a href="hackathons.html#past">Past winners</a>
+        </div>
+        <div>
+          <h4 class="mono-sm">Community</h4>
+          <a href="community.html#circles">Research circles</a>
+          <a href="community.html#nights">Build nights</a>
+          <a href="community.html#teams">Team finder</a>
+          <a href="community.html#conduct">Code of conduct</a>
+        </div>
+        <div>
+          <h4 class="mono-sm">Company</h4>
+          <a href="about.html">About</a>
+          <a href="about.html#sponsor">Sponsor a hackathon</a>
+          <a href="about.html#contact">Press kit</a>
+          <a href="about.html#contact">Contact</a>
+        </div>
+      </nav>
+    </div>
+    <div class="footer__base mono-sm">
+      <span>© <span id="year">2026</span> InspireNavada</span>
+      <span>Terms · Privacy · status.inspirenavada.dev</span>
+    </div>
+  </footer>
+
+  <script src="assets/main.js"></script>
+</body>
+</html>
