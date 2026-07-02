@@ -65,20 +65,40 @@
         </div>
       </div>
 
-      <aside class="hero__card" aria-label="Currently running hackathon">
-        <div class="hero__card-head">
-          <span class="status status--open">Now running</span>
-          <span class="mono-sm">№ 032</span>
+      <div class="hero__side">
+        <aside class="hero__card" aria-label="Currently running hackathon">
+          <div class="hero__card-head">
+            <span class="status status--open">Now running</span>
+            <span class="mono-sm">№ 032</span>
+          </div>
+          <h2 class="hero__card-title">The Offline-First Challenge</h2>
+          <p class="hero__card-sub">Build software that survives a dead connection. Any stack, teams of 1–4.</p>
+          <dl class="hero__card-stats">
+            <div><dt>Prize pool</dt><dd>$12,000</dd></div>
+            <div><dt>Entries</dt><dd>642</dd></div>
+            <div><dt>Closes in</dt><dd class="countdown" data-deadline="2026-07-19T23:59:00Z">—</dd></div>
+          </dl>
+          <a class="hero__card-link" href="hackathon.html">View brief &amp; rules ↗</a>
+        </aside>
+
+        <div class="hero__toggle">
+          <div class="toggle-container">
+            <input class="toggle-input" type="checkbox" id="deadline-alerts" aria-label="Deadline alerts" />
+            <div class="toggle-handle-wrapper">
+              <div class="toggle-handle">
+                <div class="toggle-handle-knob"></div>
+                <div class="toggle-handle-bar-wrapper">
+                  <div class="toggle-handle-bar"></div>
+                </div>
+              </div>
+            </div>
+            <div class="toggle-base">
+              <div class="toggle-base-inside"></div>
+            </div>
+          </div>
+          <label class="mono-sm" for="deadline-alerts">deadline alerts</label>
         </div>
-        <h2 class="hero__card-title">The Offline-First Challenge</h2>
-        <p class="hero__card-sub">Build software that survives a dead connection. Any stack, teams of 1–4.</p>
-        <dl class="hero__card-stats">
-          <div><dt>Prize pool</dt><dd>$12,000</dd></div>
-          <div><dt>Entries</dt><dd>642</dd></div>
-          <div><dt>Closes in</dt><dd class="countdown" data-deadline="2026-07-19T23:59:00Z">—</dd></div>
-        </dl>
-        <a class="hero__card-link" href="hackathon.html">View brief &amp; rules ↗</a>
-      </aside>
+      </div>
     </section>
 
     <!-- ── live hackathons ─────────────────────────────── -->
