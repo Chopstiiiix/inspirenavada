@@ -1,4 +1,5 @@
 .git
 .wrangler
+components
 .assetsignore
 wrangler.jsonc

@@ -40,6 +40,53 @@
   var year = document.getElementById("year");
   if (year) year.textContent = String(new Date().getFullYear());
 
+  // industrial "Dev Mode" switch — click toggles, drag with snap
+  var iswitch = document.getElementById("dev-mode-switch");
+  if (iswitch) {
+    var MAX_TRAVEL = 80;
+    var swInput = iswitch.querySelector(".iswitch__input");
+    var swHandle = iswitch.querySelector(".iswitch__handle");
+    var dragStartY = null;
+    var dragOffset = 0;
+    var wasDragged = false;
+
+    swInput.addEventListener("pointerdown", function (e) {
+      dragStartY = e.clientY;
+      dragOffset = swInput.checked ? MAX_TRAVEL : 0;
+      wasDragged = false;
+      swInput.setPointerCapture(e.pointerId);
+    });
+
+    swInput.addEventListener("pointermove", function (e) {
+      if (dragStartY === null) return;
+      if (Math.abs(e.clientY - dragStartY) > 4) wasDragged = true;
+      if (wasDragged) {
+        var pos = Math.max(0, Math.min(MAX_TRAVEL, e.clientY - dragStartY + dragOffset));
+        iswitch.classList.add("is-dragging");
+        swHandle.style.transform = "translateY(" + pos + "px)";
+      }
+    });
+
+    swInput.addEventListener("pointerup", function (e) {
+      if (dragStartY === null) return;
+      if (wasDragged) {
+        var end = Math.max(0, Math.min(MAX_TRAVEL, e.clientY - dragStartY + dragOffset));
+        swInput.checked = end > MAX_TRAVEL / 2;
+      }
+      iswitch.classList.remove("is-dragging");
+      swHandle.style.transform = "";
+      dragStartY = null;
+    });
+
+    // a drag should not also fire the checkbox's click-toggle
+    swInput.addEventListener("click", function (e) {
+      if (wasDragged) {
+        e.preventDefault();
+        wasDragged = false;
+      }
+    });
+  }
+
   // tab bars (hackathon detail page)
   var tabButtons = Array.prototype.slice.call(document.querySelectorAll(".tabbar button[data-tab]"));
   tabButtons.forEach(function (btn) {

@@ -82,21 +82,25 @@
         </aside>
 
         <div class="hero__toggle">
-          <div class="toggle-container">
-            <input class="toggle-input" type="checkbox" id="deadline-alerts" aria-label="Deadline alerts" />
-            <div class="toggle-handle-wrapper">
-              <div class="toggle-handle">
-                <div class="toggle-handle-knob"></div>
-                <div class="toggle-handle-bar-wrapper">
-                  <div class="toggle-handle-bar"></div>
+          <div class="iswitch" id="dev-mode-switch">
+            <input class="iswitch__input" type="checkbox" id="dev-mode" checked aria-label="Dev Mode" />
+            <div class="iswitch__housing">
+              <div class="iswitch__stripes"></div>
+              <div class="iswitch__rail"><i></i></div>
+              <div class="iswitch__led"></div>
+              <div class="iswitch__handle">
+                <div class="iswitch__grips"><i></i><i></i></div>
+                <div class="iswitch__text">
+                  <span class="iswitch__text-off">STANDBY</span>
+                  <span class="iswitch__text-on">ONLINE</span>
                 </div>
               </div>
+              <span class="iswitch__label-off">OFF</span>
+              <span class="iswitch__label-on">ON</span>
             </div>
-            <div class="toggle-base">
-              <div class="toggle-base-inside"></div>
-            </div>
+            <div class="iswitch__reflection"></div>
           </div>
-          <label class="mono-sm" for="deadline-alerts">deadline alerts</label>
+          <label class="mono-sm" for="dev-mode">Dev Mode</label>
         </div>
       </div>
     </section>

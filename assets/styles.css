@@ -275,83 +275,192 @@ a { color: inherit; text-decoration: none; }
   user-select: none;
 }
 
-/* skeuomorphic toggle, paper-and-ink edition */
-.toggle-container {
+/* industrial switch ("Dev Mode") — vanilla port of toggle-switch.tsx */
+.iswitch {
   position: relative;
-  width: 68px;
-  height: 38px;
+  width: 112px;
   flex-shrink: 0;
 }
-.toggle-input {
+.iswitch__input {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: 0; left: 0;
+  width: 112px;
+  height: 224px;
   margin: 0;
   opacity: 0;
-  cursor: pointer;
-  z-index: 3;
+  cursor: grab;
+  z-index: 40;
+  touch-action: none;
 }
-.toggle-base {
+.iswitch__input:active { cursor: grabbing; }
+.iswitch__input:focus-visible ~ .iswitch__housing {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+
+/* housing: w-28 h-56 rounded-3xl bg-neutral-900 border-neutral-800 */
+.iswitch__housing {
+  position: relative;
+  width: 112px;
+  height: 224px;
+  border-radius: 24px;
+  background: #171717;
+  border: 2px solid #262626;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), inset 0 2px 5px rgba(0, 0, 0, 1);
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* caution stripes */
+.iswitch__stripes {
   position: absolute;
   inset: 0;
-  z-index: 1;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-  box-shadow: 3px 3px 0 var(--paper-deep);
-}
-.toggle-base-inside {
-  position: absolute;
-  inset: 3px;
-  background: var(--paper-deep);
-  transition: background 0.18s ease;
-}
-.toggle-input:checked ~ .toggle-base .toggle-base-inside {
-  background: rgba(200, 16, 46, 0.1);
-}
-.toggle-handle-wrapper {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
+  border-radius: 24px;
+  overflow: hidden;
+  opacity: 0.1;
   pointer-events: none;
 }
-.toggle-handle {
+.iswitch__stripes::after {
+  content: "";
   position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--ink);
-  background: var(--paper);
+  bottom: 0; left: 0; right: 0;
+  height: 64px;
+  background: repeating-linear-gradient(45deg, transparent, transparent 10px, #000 10px, #000 20px);
+}
+
+/* rail slot */
+.iswitch__rail {
+  position: absolute;
+  top: 24px; bottom: 24px;
+  width: 24px;
+  background: #000;
+  border-radius: 999px;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 1);
+  border-left: 1px solid rgba(38, 38, 38, 0.5);
+  border-right: 1px solid rgba(38, 38, 38, 0.5);
+}
+.iswitch__rail i {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: rgba(38, 38, 38, 0.5);
+}
+
+/* status LED: dark red (off) -> emerald with glow (on) */
+.iswitch__led {
+  position: absolute;
+  top: -12px;
+  width: 64px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid #171717;
+  background: #451a1a;
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  z-index: 20;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.iswitch__input:checked ~ .iswitch__housing .iswitch__led {
+  background: #10b981;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+}
+
+/* draggable handle: w-24 h-32, spring travel 80px */
+.iswitch__handle {
+  position: relative;
+  z-index: 10;
+  width: 96px;
+  height: 128px;
+  border-radius: 12px;
+  border: 1px solid #404040;
+  background: linear-gradient(180deg, #404040 0%, #262626 100%);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transform: translateY(0);
+  transition: transform 0.45s cubic-bezier(0.3, 1.4, 0.55, 1), background 0.3s ease;
+}
+.iswitch__input:checked ~ .iswitch__housing .iswitch__handle {
+  transform: translateY(80px);
+  background: linear-gradient(180deg, #2d4f40 0%, #153025 100%);
+}
+.iswitch.is-dragging .iswitch__handle { transition: background 0.3s ease; }
+
+/* grip texture */
+.iswitch__grips {
+  position: absolute;
+  top: 12px;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0.3;
+}
+.iswitch__grips i {
+  height: 2px;
+  width: 100%;
+  background: #000;
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* STANDBY / ONLINE cross-fade */
+.iswitch__text {
+  margin-top: 16px;
+  position: relative;
+  width: 100%;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.toggle-input:checked ~ .toggle-handle-wrapper .toggle-handle {
-  transform: translateX(30px);
+.iswitch__text span {
+  position: absolute;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  transition: opacity 0.25s ease;
 }
-.toggle-handle-knob {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1px solid var(--ink);
-  background: var(--paper);
+.iswitch__text-off { color: #737373; opacity: 1; }
+.iswitch__text-on {
+  color: #34d399;
+  opacity: 0;
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.8));
 }
-.toggle-handle-bar-wrapper { display: flex; }
-.toggle-handle-bar {
-  width: 3px;
-  height: 13px;
-  background: var(--ink-faint);
-  transition: background 0.18s ease;
+.iswitch__input:checked ~ .iswitch__housing .iswitch__text-off { opacity: 0; }
+.iswitch__input:checked ~ .iswitch__housing .iswitch__text-on { opacity: 1; }
+
+/* OFF / ON side labels */
+.iswitch__label-off,
+.iswitch__label-on {
+  position: absolute;
+  right: 4px;
+  font-family: var(--mono);
+  font-size: 8px;
+  color: #525252;
+  letter-spacing: 0.2em;
+  transform: rotate(90deg);
+  transform-origin: left;
 }
-.toggle-input:checked ~ .toggle-handle-wrapper .toggle-handle-bar {
-  background: var(--red);
-}
-.toggle-input:focus-visible ~ .toggle-base {
-  outline: 2px solid var(--red);
-  outline-offset: 2px;
+.iswitch__label-off { top: 32px; }
+.iswitch__label-on { bottom: 32px; }
+
+/* floor reflection */
+.iswitch__reflection {
+  margin: 20px auto 0;
+  width: 96px;
+  height: 14px;
+  background: #000;
+  border-radius: 100%;
+  filter: blur(20px);
+  opacity: 0.35;
 }
 
 /* status chips */
