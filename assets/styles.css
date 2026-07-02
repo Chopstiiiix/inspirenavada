@@ -267,19 +267,24 @@ a { color: inherit; text-decoration: none; }
   margin-top: auto;
   padding-top: 1.2rem;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.9rem;
+  gap: 0.4rem;
 }
 .hero__toggle label {
   cursor: pointer;
   user-select: none;
 }
 
-/* industrial switch ("Dev Mode") — vanilla port of toggle-switch.tsx */
+/* industrial switch ("Dev Mode") — vanilla port of toggle-switch.tsx,
+   rendered at 0.62 scale; layout height matches the scaled visual */
 .iswitch {
   position: relative;
   width: 112px;
   flex-shrink: 0;
+  transform: scale(0.62);
+  transform-origin: top center;
+  height: 160px; /* (224 housing + 20 gap + 14 reflection) × 0.62 */
 }
 .iswitch__input {
   position: absolute;

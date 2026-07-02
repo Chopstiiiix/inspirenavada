@@ -49,11 +49,15 @@
     var dragStartY = null;
     var dragOffset = 0;
     var wasDragged = false;
+    var dragScale = 1;
 
     swInput.addEventListener("pointerdown", function (e) {
       dragStartY = e.clientY;
       dragOffset = swInput.checked ? MAX_TRAVEL : 0;
       wasDragged = false;
+      // the switch renders scaled; map screen px back to component px
+      var t = getComputedStyle(iswitch).transform;
+      dragScale = t && t !== "none" ? new DOMMatrixReadOnly(t).a : 1;
       swInput.setPointerCapture(e.pointerId);
     });
 
@@ -61,7 +65,7 @@
       if (dragStartY === null) return;
       if (Math.abs(e.clientY - dragStartY) > 4) wasDragged = true;
       if (wasDragged) {
-        var pos = Math.max(0, Math.min(MAX_TRAVEL, e.clientY - dragStartY + dragOffset));
+        var pos = Math.max(0, Math.min(MAX_TRAVEL, (e.clientY - dragStartY) / dragScale + dragOffset));
         iswitch.classList.add("is-dragging");
         swHandle.style.transform = "translateY(" + pos + "px)";
       }
@@ -70,7 +74,7 @@
     swInput.addEventListener("pointerup", function (e) {
       if (dragStartY === null) return;
       if (wasDragged) {
-        var end = Math.max(0, Math.min(MAX_TRAVEL, e.clientY - dragStartY + dragOffset));
+        var end = Math.max(0, Math.min(MAX_TRAVEL, (e.clientY - dragStartY) / dragScale + dragOffset));
         swInput.checked = end > MAX_TRAVEL / 2;
       }
       iswitch.classList.remove("is-dragging");
