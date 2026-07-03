@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="assets/styles.css" />
+  <link rel="stylesheet" href="assets/styles.css?v=7" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23F7F4EC'/><text x='8' y='14' text-anchor='middle' font-size='17' font-family='Georgia,serif' fill='%23C8102E'>*</text></svg>" />
 </head>
 <body>
@@ -385,6 +385,37 @@
     </div>
   </footer>
 
-  <script src="assets/main.js"></script>
+  <!-- ── dev mode layer ────────────────────────────────── -->
+  <div class="devmode" id="devmode" aria-hidden="true">
+    <p class="devmode__mark mono-sm">inspirenavada<sup>*</sup> · dev mode</p>
+    <nav class="dock" id="dock" aria-label="Dev mode dock">
+      <a class="dock__item" href="index.html" data-label="Home" style="--bg:#4a4a52">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.8V21h14V9.8"/><path d="M10 21v-6h4v6"/></svg>
+      </a>
+      <a class="dock__item" href="hackathons.html" data-label="Hackathons" style="--bg:#3874f6">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.4h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      </a>
+      <a class="dock__item" href="hackathon.html" data-label="Brief № 032" style="--bg:#efad00">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5h7.5L18 7v14.5H6z"/><path d="M13.5 2.5V7H18"/><path d="M9 13h6M9 17h6"/></svg>
+      </a>
+      <a class="dock__item" href="standings.html" data-label="Standings" style="--bg:#e8363d">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20v-7"/><path d="M12 20V5"/><path d="M18 20v-10"/><path d="M4 20h16"/></svg>
+      </a>
+      <a class="dock__item" href="ranks.html" data-label="Ranks" style="--bg:#bb3fc4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 14.7 8.4 20.9 9.3 16.4 13.6 17.5 19.8 12 16.9 6.5 19.8 7.6 13.6 3.1 9.3 9.3 8.4z"/></svg>
+      </a>
+      <a class="dock__item" href="community.html" data-label="Community" style="--bg:#2fbf54">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.6-.8L3 21l1.8-5.9A8.5 8.5 0 1 1 21 11.5z"/></svg>
+      </a>
+      <a class="dock__item" href="about.html" data-label="About" style="--bg:#38a1f0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a13.5 13.5 0 0 1 0 18 13.5 13.5 0 0 1 0-18z"/></svg>
+      </a>
+      <button class="dock__item" type="button" data-label="Exit dev mode" data-exit style="--bg:#55555e">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><path d="M12 2v9"/></svg>
+      </button>
+    </nav>
+  </div>
+
+  <script src="assets/main.js?v=7"></script>
 </body>
 </html>

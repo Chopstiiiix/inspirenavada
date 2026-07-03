@@ -89,6 +89,64 @@
         wasDragged = false;
       }
     });
+
+    // ── dev mode: switch on -> slide to the right screen edge,
+    //    page fades to the dot-grid dark layer, dock appears ──
+    var devLayer = document.getElementById("devmode");
+    if (devLayer) {
+      var dock = document.getElementById("dock");
+      var dockItems = Array.prototype.slice.call(dock.querySelectorAll(".dock__item"));
+
+      var syncDevMode = function () {
+        var isOn = document.body.classList.contains("dev-mode");
+        if (swInput.checked === isOn) return;
+        if (swInput.checked) {
+          var r = iswitch.getBoundingClientRect();
+          var housing = iswitch.querySelector(".iswitch__housing").getBoundingClientRect();
+          var dx = window.innerWidth - r.right - 28;
+          iswitch.style.transform = "translateX(" + dx + "px) scale(0.45)";
+          // dock sits on the same horizontal line as the switch housing
+          dock.style.top = housing.top + housing.height / 2 + "px";
+          document.body.classList.add("dev-mode");
+          devLayer.setAttribute("aria-hidden", "false");
+        } else {
+          iswitch.style.transform = "";
+          document.body.classList.remove("dev-mode");
+          devLayer.setAttribute("aria-hidden", "true");
+        }
+      };
+
+      swInput.addEventListener("change", syncDevMode);
+      // drags set .checked programmatically, which fires no change event
+      swInput.addEventListener("pointerup", function () {
+        setTimeout(syncDevMode, 0);
+      });
+
+      devLayer.querySelector("[data-exit]").addEventListener("click", function () {
+        swInput.checked = false;
+        syncDevMode();
+      });
+
+      // dock magnification: scale falls off with cursor distance
+      var itemCenters = function () {
+        var dr = dock.getBoundingClientRect();
+        return dockItems.map(function (it) {
+          return dr.left + it.offsetLeft + it.offsetWidth / 2;
+        });
+      };
+      dock.addEventListener("mousemove", function (e) {
+        var cs = itemCenters();
+        dockItems.forEach(function (it, i) {
+          var f = Math.max(0, 1 - Math.abs(e.clientX - cs[i]) / 140);
+          it.style.transform = "translateY(" + -16 * f + "px) scale(" + (1 + 0.5 * f) + ")";
+        });
+      });
+      dock.addEventListener("mouseleave", function () {
+        dockItems.forEach(function (it) {
+          it.style.transform = "";
+        });
+      });
+    }
   }
 
   // tab bars (hackathon detail page)
