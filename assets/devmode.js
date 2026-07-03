@@ -77,7 +77,10 @@
   });
 
   var fsListeners = [];
-  function fsEmit() { fsListeners.forEach(function (fn) { fn(); }); }
+  function fsEmit() {
+    fsListeners.forEach(function (fn) { fn(); });
+    scheduleWorkspaceSave();
+  }
 
   function resolvePath(cwd, p) {
     var segs;
@@ -117,10 +120,69 @@
     ],
     listeners: [],
   };
-  function gitEmit() { GIT.listeners.forEach(function (fn) { fn(); }); }
+  function gitEmit() {
+    GIT.listeners.forEach(function (fn) { fn(); });
+    scheduleWorkspaceSave();
+  }
   function gitTouch(path) {
     if (GIT.modified.indexOf(path) < 0 && GIT.staged.indexOf(path) < 0) GIT.modified.push(path);
     gitEmit();
+  }
+
+  /* ── workspace persistence: signed-in users keep FS + git across
+        reloads and devices (Supabase); guests stay in-memory ── */
+  var FS_PRISTINE = JSON.stringify(FS.children);
+  function gitSnapshot() {
+    return { branch: GIT.branch, ahead: GIT.ahead, modified: GIT.modified, staged: GIT.staged, log: GIT.log };
+  }
+  var GIT_PRISTINE = JSON.stringify(gitSnapshot());
+  var wsUser;            // uid the in-page workspace currently belongs to
+  var wsReady = false;   // saves allowed only after the remote copy is loaded
+  var wsPending = false; // a change arrived while the remote copy was loading
+  var wsSaveTimer = null;
+
+  function applyGitSnapshot(g) {
+    GIT.branch = g.branch || "main";
+    GIT.ahead = g.ahead || 0;
+    GIT.modified = g.modified || [];
+    GIT.staged = g.staged || [];
+    if (g.log && g.log.length) GIT.log = g.log;
+  }
+
+  function scheduleWorkspaceSave() {
+    if (!window.inWorkspace) return;
+    if (!wsReady) { wsPending = true; return; }
+    clearTimeout(wsSaveTimer);
+    wsSaveTimer = setTimeout(function () {
+      window.inWorkspace.save(FS, gitSnapshot()).catch(function () { /* offline — keep working in-memory */ });
+    }, 2000);
+  }
+
+  function syncWorkspaceForUser() {
+    var u = window.inAuth && window.inAuth.get();
+    var uid = u ? u.loginId.split(".")[0] : null;
+    if (uid === wsUser) return;
+    // account changed (or signed out): reset to the pristine sandbox first
+    wsUser = uid;
+    wsReady = false;
+    wsPending = false;
+    clearTimeout(wsSaveTimer);
+    FS.children = JSON.parse(FS_PRISTINE);
+    applyGitSnapshot(JSON.parse(GIT_PRISTINE));
+    fsListeners.forEach(function (fn) { fn(); });
+    GIT.listeners.forEach(function (fn) { fn(); });
+    if (!uid || !window.inWorkspace) return; // guests: in-memory only
+    window.inWorkspace.load().then(function (data) {
+      if (wsUser !== uid) return; // user switched while the fetch was in flight
+      if (data) {
+        if (data.fs && data.fs.children) FS.children = data.fs.children;
+        if (data.git) applyGitSnapshot(data.git);
+        fsListeners.forEach(function (fn) { fn(); });
+        GIT.listeners.forEach(function (fn) { fn(); });
+      }
+      wsReady = true; // no row yet is fine — first change creates it
+      if (wsPending) { wsPending = false; scheduleWorkspaceSave(); }
+    }).catch(function () { /* offline — stay in-memory, don't overwrite remote */ });
   }
 
   /* ── sample database ──────────────────────────────────── */
@@ -469,6 +531,18 @@
 
   /* ── real Claude agent (BYO API key, browser → api.anthropic.com) ── */
   var CLAUDE_MODEL = "claude-opus-4-8";
+  var CLAUDE_MODELS = {
+    opus: "claude-opus-4-8",
+    sonnet: "claude-sonnet-5",
+    haiku: "claude-haiku-4-5",
+  };
+  function resolveModel(name) {
+    if (!name) return null;
+    var n = String(name).toLowerCase();
+    if (CLAUDE_MODELS[n]) return CLAUDE_MODELS[n];
+    if (n.indexOf("claude-") === 0) return n; // full model id passthrough
+    return null;
+  }
 
   function allFiles() {
     var res = [];
@@ -584,9 +658,10 @@
     );
   }
 
-  function anthropicCall(key, messages) {
+  function anthropicStream(key, model, messages, signal, onText) {
     return fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: signal,
       headers: {
         "content-type": "application/json",
         "x-api-key": key,
@@ -594,29 +669,95 @@
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 8192,
-        thinking: { type: "adaptive" },
+        model: model,
+        max_tokens: 16000,
+        stream: true,
+        // Haiku 4.5 predates adaptive thinking; JSON.stringify drops the undefined
+        thinking: model.indexOf("haiku") < 0 ? { type: "adaptive" } : undefined,
         system: agentSystemPrompt(),
         tools: AGENT_TOOLS,
         messages: messages,
       }),
     }).then(
       function (r) {
-        return r.json().then(function (j) {
-          if (!r.ok) {
+        if (!r.ok) {
+          return r.json().then(function (j) {
             var msg = (j && j.error && j.error.message) || ("HTTP " + r.status);
             var err = new Error(msg);
             err.status = r.status;
             throw err;
-          }
-          return j;
-        });
+          });
+        }
+        return readSSE(r, onText);
       },
-      function () {
+      function (err) {
+        if (err && err.name === "AbortError") throw err;
         throw new Error("network error — couldn't reach api.anthropic.com");
       }
     );
+  }
+
+  // minimal SSE reader for the Messages streaming shape:
+  // accumulates content blocks, streams text deltas out via onText
+  function readSSE(response, onText) {
+    var reader = response.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = "";
+    var blocks = [];
+    var stopReason = null;
+
+    function handleEvent(ev) {
+      if (ev.type === "content_block_start") {
+        var b = ev.content_block;
+        blocks[ev.index] = b.type === "tool_use"
+          ? { type: "tool_use", id: b.id, name: b.name, input: {}, _json: "" }
+          : b.type === "thinking"
+            ? { type: "thinking", thinking: b.thinking || "", signature: "" }
+            : { type: b.type, text: b.text || "" };
+      } else if (ev.type === "content_block_delta") {
+        var blk = blocks[ev.index];
+        if (!blk) return;
+        if (ev.delta.type === "text_delta") {
+          blk.text += ev.delta.text;
+          if (blk.type === "text" && onText) onText(ev.delta.text);
+        } else if (ev.delta.type === "input_json_delta") {
+          blk._json += ev.delta.partial_json;
+        } else if (ev.delta.type === "thinking_delta") {
+          blk.thinking += ev.delta.thinking;
+        } else if (ev.delta.type === "signature_delta") {
+          blk.signature = (blk.signature || "") + ev.delta.signature;
+        }
+      } else if (ev.type === "content_block_stop") {
+        var done = blocks[ev.index];
+        if (done && done.type === "tool_use") {
+          try { done.input = done._json ? JSON.parse(done._json) : {}; } catch (e) { done.input = {}; }
+          delete done._json;
+        }
+      } else if (ev.type === "message_delta") {
+        if (ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
+      } else if (ev.type === "error") {
+        var err = new Error((ev.error && ev.error.message) || "stream error");
+        throw err;
+      }
+    }
+
+    function pump() {
+      return reader.read().then(function (chunk) {
+        if (chunk.done) return { content: blocks.filter(Boolean), stop_reason: stopReason };
+        buf += decoder.decode(chunk.value, { stream: true });
+        var lines = buf.split("\n");
+        buf = lines.pop(); // keep the trailing partial line
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          if (line.indexOf("data: ") !== 0) continue;
+          var payload = line.slice(6).trim();
+          if (!payload) continue;
+          handleEvent(JSON.parse(payload));
+        }
+        return pump();
+      });
+    }
+    return pump();
   }
 
   /* ── Terminal ─────────────────────────────────────────── */
@@ -652,6 +793,8 @@
     var claudeReal = false;    // true when a linked API key backs the session
     var claudeBusy = false;
     var claudeHistory = [];
+    var claudeModel = CLAUDE_MODEL;
+    var claudeAbort = null;    // AbortController for the in-flight turn
 
     function pathStr() { return "~" + (cwd.length ? "/" + cwd.join("/") : ""); }
     function ps1Str() {
@@ -768,16 +911,18 @@
       prompt();
     }
 
-    /* real agent loop: Messages API + tool use over the sandbox FS */
+    /* real agent loop: streaming Messages API + tool use over the sandbox FS */
     function realClaudeReply(q) {
       var key = window.claudeLink && window.claudeLink.getKey();
       if (!key) { exitClaude("✻ key disconnected — back to zsh"); return; }
       claudeBusy = true;
+      claudeAbort = new AbortController();
       // keep the context bounded; a clean reset avoids orphaned tool_use pairs
       if (claudeHistory.length > 60) {
         claudeHistory = [];
         say("✻ (long session — context reset)", "t-dim");
       }
+      var turnStart = claudeHistory.length; // rollback point on abort/error
       claudeHistory.push({ role: "user", content: q });
 
       var thinking = document.createElement("div");
@@ -785,32 +930,52 @@
       out.appendChild(thinking);
       out.scrollTop = out.scrollHeight;
       var hops = 0;
+      var liveSpan = null; // text streams into here as it generates
 
-      function printAgentText(text) {
-        var lines = esc(text.trim()).split("\n");
-        print('<span class="t-claude">⏺</span> ' + lines[0]);
-        lines.slice(1).forEach(function (l) { print("  " + l); });
+      function onText(t) {
+        if (!liveSpan) {
+          var d = document.createElement("div");
+          d.innerHTML = '<span class="t-claude">⏺</span> <span class="t-stream"></span>';
+          out.insertBefore(d, thinking);
+          liveSpan = d.querySelector(".t-stream");
+        }
+        liveSpan.textContent += t;
+        out.scrollTop = out.scrollHeight;
       }
 
       function finish() {
         thinking.remove();
         print("&nbsp;");
         claudeBusy = false;
+        claudeAbort = null;
         out.scrollTop = out.scrollHeight;
       }
 
+      function fail(err) {
+        thinking.remove();
+        claudeHistory.length = turnStart; // clean slate for a retry
+        if (err && err.name === "AbortError") {
+          say("✻ interrupted", "t-dim");
+        } else {
+          say("✻ " + err.message, "t-err");
+          if (err.status === 401) say("  the key was rejected — reconnect via the account menu or `claude connect`", "t-dim");
+          else if (err.status === 429) say("  rate limited — wait a moment and try again", "t-dim");
+        }
+        claudeBusy = false;
+        claudeAbort = null;
+        prompt();
+      }
+
       function step() {
-        anthropicCall(key, claudeHistory).then(function (res) {
+        liveSpan = null; // fresh stream element per round
+        anthropicStream(key, claudeModel, claudeHistory, claudeAbort.signal, onText).then(function (res) {
           if (res.stop_reason === "refusal") {
             say("✻ Claude declined that request.", "t-err");
-            claudeHistory.pop();
+            claudeHistory.length = turnStart;
             finish();
             return;
           }
           claudeHistory.push({ role: "assistant", content: res.content });
-          res.content.forEach(function (block) {
-            if (block.type === "text" && block.text.trim()) printAgentText(block.text);
-          });
           var toolUses = res.content.filter(function (b) { return b.type === "tool_use"; });
           if (res.stop_reason === "tool_use" && toolUses.length && hops++ < 12) {
             var results = toolUses.map(function (tu) {
@@ -829,14 +994,7 @@
             if (hops >= 12) say("✻ (stopped after 12 tool rounds)", "t-dim");
             finish();
           }
-        }).catch(function (err) {
-          thinking.remove();
-          say("✻ " + err.message, "t-err");
-          if (err.status === 401) say("  the key was rejected — reconnect via the account menu or `claude connect`", "t-dim");
-          else if (err.status === 429) say("  rate limited — wait a moment and try again", "t-dim");
-          claudeBusy = false;
-          prompt();
-        });
+        }).catch(fail);
       }
       step();
     }
@@ -850,10 +1008,19 @@
 
       if (claudeMode) {
         if (claudeBusy) {
-          say("✻ still working — hang on…", "t-dim");
+          say("✻ still working — Ctrl+C interrupts", "t-dim");
           return;
         }
         if (/^\/?(exit|quit|q)$/i.test(line)) exitClaude();
+        else if (/^\/model(\s|$)/i.test(line)) {
+          var wanted = resolveModel(line.split(/\s+/)[1]);
+          if (wanted) {
+            claudeModel = wanted;
+            say("✻ model → " + claudeModel, "t-dim");
+          } else {
+            say("✻ model: " + claudeModel + " · switch with /model opus · sonnet · haiku", "t-dim");
+          }
+        }
         else if (claudeReal) realClaudeReply(line);
         else claudeReply(line);
         prompt();
@@ -1026,12 +1193,22 @@
             say("✻ key disconnected — `claude` is back to sandbox mode", "t-dim");
             break;
           }
+          var argv = args.slice();
+          for (var mi = 0; mi < argv.length; mi++) {
+            if (argv[mi] === "--model" || argv[mi] === "-m") {
+              var picked = resolveModel(argv[mi + 1]);
+              if (picked) claudeModel = picked;
+              else say("claude: unknown model '" + (argv[mi + 1] || "") + "' — opus · sonnet · haiku", "t-err");
+              argv.splice(mi, 2);
+              break;
+            }
+          }
           claudeMode = true;
           claudeReal = !!(window.claudeLink && window.claudeLink.getKey());
           claudeHistory = [];
           if (claudeReal) {
-            print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· linked to your Anthropic account (' + esc(CLAUDE_MODEL) + ")</span>");
-            say("  real agent — it reads and edits this sandbox with tools · /exit to leave", "t-dim");
+            print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· linked to your Anthropic account (' + esc(claudeModel) + ")</span>");
+            say("  real agent — reads & edits this sandbox · Ctrl+C interrupts · /model switches · /exit leaves", "t-dim");
           } else {
             print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">v2.1.7 · sandbox — no API key needed in here</span>');
             say("  ask about this repo, your todos, or hackathon № 032 · /exit to leave", "t-dim");
@@ -1040,7 +1217,7 @@
             }
           }
           print("&nbsp;");
-          var initial = raw.replace(/^\s*claude\s*/, "").replace(/^["']|["']$/g, "");
+          var initial = argv.join(" ").replace(/^["']|["']$/g, "");
           if (initial) {
             if (claudeReal) realClaudeReply(initial);
             else claudeReply(initial);
@@ -1091,7 +1268,8 @@
       } else if (e.key === "c" && e.ctrlKey) {
         print('<span class="t-ok">' + esc(ps1Str()) + "</span> " + esc(input.value) + "^C");
         input.value = "";
-        if (claudeMode) exitClaude("✻ interrupted — back to zsh");
+        if (claudeBusy && claudeAbort) claudeAbort.abort(); // stop the turn, stay in the session
+        else if (claudeMode) exitClaude("✻ interrupted — back to zsh");
       } else if (e.key === "l" && e.ctrlKey) {
         e.preventDefault();
         out.innerHTML = "";
@@ -1915,14 +2093,17 @@
     if (focusedName) closeApp(focusedName);
   });
 
-  // switching Dev Mode off tears the desktop down
+  // switching Dev Mode off tears the desktop down; on pulls the user's workspace
   if (swInput) {
-    var teardown = function () {
-      if (swInput.checked) return;
+    var onSwitch = function () {
+      if (swInput.checked) {
+        syncWorkspaceForUser();
+        return;
+      }
       Object.keys(wins).forEach(function (n) { closeApp(n, true); });
       setDocked(false);
     };
-    swInput.addEventListener("change", teardown);
-    swInput.addEventListener("pointerup", function () { setTimeout(teardown, 0); });
+    swInput.addEventListener("change", onSwitch);
+    swInput.addEventListener("pointerup", function () { setTimeout(onSwitch, 0); });
   }
 })();

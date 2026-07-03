@@ -263,6 +263,30 @@
     },
   };
 
+  // ── per-user dev-mode workspace (sandbox FS + git state) ──
+  window.inWorkspace = {
+    load: function () {
+      if (!sb || !currentSession) return Promise.resolve(null);
+      return sb.from("workspaces")
+        .select("fs, git")
+        .eq("user_id", currentSession.user.id)
+        .maybeSingle()
+        .then(function (res) {
+          if (res.error) throw new Error(res.error.message);
+          return res.data; // null when the user has no saved workspace yet
+        });
+    },
+    save: function (fs, git) {
+      if (!sb || !currentSession) return Promise.resolve(false);
+      return sb.from("workspaces")
+        .upsert({ user_id: currentSession.user.id, fs: fs, git: git })
+        .then(function (res) {
+          if (res.error) throw new Error(res.error.message);
+          return true;
+        });
+    },
+  };
+
   function signinClose() {
     if (signinEl) signinEl.classList.remove("is-open");
   }
