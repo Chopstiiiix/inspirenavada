@@ -1,0 +1,39 @@
+{
+  // Isolated Phase-2 backend — a SEPARATE Worker from the static site.
+  // The static site (../wrangler.jsonc) is untouched by anything in here.
+  // Deploy from this directory:  cd sandbox-service && npx wrangler deploy
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "inspirenavada-sandbox",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Per-user code sandboxes (Cloudflare Containers). Requires Workers Paid.
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./Dockerfile",
+      // "basic" = 1/4 vCPU, 1 GiB RAM, 4 GB disk — enough for the claude CLI.
+      // Bump to "standard-1" if builds inside the sandbox get memory-starved.
+      "instance_type": "basic",
+      "max_instances": 10
+    }
+  ],
+
+  // The Container class is backed by a SQLite Durable Object.
+  "durable_objects": {
+    "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Sandbox"] }
+  ],
+
+  // Public config (safe to commit — the Supabase publishable key is already
+  // baked into the frontend bundle). Used to verify the caller's Supabase JWT.
+  "vars": {
+    "SUPA_URL": "https://calbklvtnewbroyllamj.supabase.co",
+    "SUPA_ANON_KEY": "sb_publishable_Sh44o7DVvr9_CjJUCMWL9w_znAyX62u",
+    "ALLOWED_ORIGINS": "https://inspirenavada.inspire-edge.net,http://localhost:8787,http://127.0.0.1:8787,http://localhost:3000"
+  }
+}

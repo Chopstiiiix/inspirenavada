@@ -1,0 +1,19 @@
+{
+  "name": "inspirenavada-sandbox",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Per-user Cloudflare Containers sandbox running the real Claude Code CLI for InspireNavada dev mode (Phase 2).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "0.12.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260701.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}

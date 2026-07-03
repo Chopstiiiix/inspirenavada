@@ -3,3 +3,8 @@
 components
 .assetsignore
 wrangler.jsonc
+sandbox-service
+PHASE2.md
+package.json
+package-lock.json
+node_modules

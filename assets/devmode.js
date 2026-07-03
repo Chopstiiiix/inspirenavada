@@ -791,10 +791,11 @@
     var claudeMode = false;
     var claudeIdle = 0;
     var claudeReal = false;    // true when a linked API key backs the session
+    var claudeCloud = false;   // true when the real CLI runs in a cloud sandbox
     var claudeBusy = false;
     var claudeHistory = [];
     var claudeModel = CLAUDE_MODEL;
-    var claudeAbort = null;    // AbortController for the in-flight turn
+    var claudeAbort = null;    // AbortController (or {abort}) for the in-flight turn
 
     function pathStr() { return "~" + (cwd.length ? "/" + cwd.join("/") : ""); }
     function ps1Str() {
@@ -905,10 +906,83 @@
     function exitClaude(msg) {
       claudeMode = false;
       claudeReal = false;
+      claudeCloud = false;
       claudeBusy = false;
       claudeHistory = [];
       say(msg || "✻ session ended — back to zsh", "t-dim");
       prompt();
+    }
+
+    /* pull files the real CLI created in the cloud sandbox into the local
+       VFS so they show up in the Code Editor and Git apps */
+    function mirrorSandboxFiles() {
+      if (!(window.sandbox && window.sandbox.list)) return;
+      window.sandbox.list().then(function (r) {
+        var files = (r.files || []).slice(0, 80);
+        return Promise.all(files.map(function (p) {
+          return window.sandbox.read(p).then(function (rr) {
+            var segs = resolvePath([], p);
+            if (!segs.length) return;
+            var parent = FS, i;
+            for (i = 0; i < segs.length - 1; i++) {
+              if (!parent.children[segs[i]]) parent.children[segs[i]] = D({});
+              parent = parent.children[segs[i]];
+              if (parent.type !== "dir") return;
+            }
+            parent.children[segs[segs.length - 1]] = F(String(rr.content || ""));
+            gitTouch("~/" + segs.join("/"));
+          }).catch(function () { /* skip unreadable file */ });
+        }));
+      }).then(function () { fsEmit(); }).catch(function () { /* mirror is best-effort */ });
+    }
+
+    /* real Claude Code CLI, running in the user's cloud sandbox */
+    function cloudClaudeReply(q) {
+      claudeBusy = true;
+      var thinking = document.createElement("div");
+      thinking.innerHTML = '<span class="t-dim">✻ working in your cloud sandbox…</span>';
+      out.appendChild(thinking);
+      out.scrollTop = out.scrollHeight;
+      var liveSpan = null;
+
+      function onText(t) {
+        if (!liveSpan) {
+          var d = document.createElement("div");
+          d.innerHTML = '<span class="t-claude">⏺</span> <span class="t-stream"></span>';
+          out.insertBefore(d, thinking);
+          liveSpan = d.querySelector(".t-stream");
+        }
+        liveSpan.textContent += t;
+        out.scrollTop = out.scrollHeight;
+      }
+      function endTurn() {
+        thinking.remove();
+        claudeBusy = false;
+        claudeAbort = null;
+        out.scrollTop = out.scrollHeight;
+      }
+
+      var streamP = window.sandbox.exec(q, claudeModel, {
+        onText: onText,
+        onError: function (err) { say("✻ " + err.message, "t-err"); },
+        onDone: function (ev) {
+          if (ev && ev.exitCode && ev.exitCode !== 0 && !liveSpan) {
+            say("✻ the CLI exited with code " + ev.exitCode, "t-dim");
+          }
+          endTurn();
+          print("&nbsp;");
+          prompt();
+          mirrorSandboxFiles();
+        },
+      });
+      // Ctrl+C aborts the fetch; the container keeps the partial work.
+      claudeAbort = { abort: function () { if (streamP && streamP.abort) streamP.abort(); } };
+      streamP.catch(function (err) {
+        if (err && err.name === "AbortError") say("✻ interrupted", "t-dim");
+        else say("✻ " + err.message, "t-err");
+        endTurn();
+        prompt();
+      });
     }
 
     /* real agent loop: streaming Messages API + tool use over the sandbox FS */
@@ -1021,6 +1095,7 @@
             say("✻ model: " + claudeModel + " · switch with /model opus · sonnet · haiku", "t-dim");
           }
         }
+        else if (claudeCloud) cloudClaudeReply(line);
         else if (claudeReal) realClaudeReply(line);
         else claudeReply(line);
         prompt();
@@ -1036,7 +1111,7 @@
           say("InspireNavada devshell — available commands:", "t-dim");
           say("  ls cd pwd cat echo mkdir touch rm clear history");
           say("  git <status|log|branch>   curl <path>   open <app>   apps");
-          say("  claude   whoami date uname neofetch sudo exit");
+          say("  claude   sandbox <set|health|clear>   whoami date uname neofetch sudo exit");
           say("tip: `open editor` launches other dock apps · `claude` starts a pairing session.", "t-dim");
           break;
         case "ls":
@@ -1205,10 +1280,17 @@
           }
           claudeMode = true;
           claudeReal = !!(window.claudeLink && window.claudeLink.getKey());
+          claudeCloud = claudeReal && !!(window.sandbox && window.sandbox.configured());
           claudeHistory = [];
-          if (claudeReal) {
+          if (claudeCloud) {
+            print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· the real CLI, running in your cloud sandbox (' + esc(claudeModel) + ")</span>");
+            say("  full Claude Code on a real filesystem · Ctrl+C interrupts · /model switches · /exit leaves", "t-dim");
+          } else if (claudeReal) {
             print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· linked to your Anthropic account (' + esc(claudeModel) + ")</span>");
             say("  real agent — reads & edits this sandbox · Ctrl+C interrupts · /model switches · /exit leaves", "t-dim");
+            if (window.sandbox && window.sandbox.url && !window.sandbox.url()) {
+              say("  tip: `sandbox set <url>` runs the actual claude CLI in a cloud container instead", "t-dim");
+            }
           } else {
             print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">v2.1.7 · sandbox — no API key needed in here</span>');
             say("  ask about this repo, your todos, or hackathon № 032 · /exit to leave", "t-dim");
@@ -1219,8 +1301,41 @@
           print("&nbsp;");
           var initial = argv.join(" ").replace(/^["']|["']$/g, "");
           if (initial) {
-            if (claudeReal) realClaudeReply(initial);
+            if (claudeCloud) cloudClaudeReply(initial);
+            else if (claudeReal) realClaudeReply(initial);
             else claudeReply(initial);
+          }
+          break;
+        }
+        case "sandbox": {
+          if (!window.sandbox) { say("sandbox: cloud service unavailable in this build", "t-err"); break; }
+          var sub = (args[0] || "").toLowerCase();
+          if (sub === "set") {
+            if (!args[1]) { say("usage: sandbox set https://inspirenavada-sandbox.<you>.workers.dev", "t-dim"); break; }
+            window.sandbox.setUrl(args[1]);
+            say("cloud sandbox → " + window.sandbox.url(), "t-ok");
+            say("  `claude` now runs the real CLI in your container. `sandbox health` to check it.", "t-dim");
+          } else if (sub === "clear" || sub === "off") {
+            window.sandbox.setUrl("");
+            say("cloud sandbox disabled — `claude` uses the in-browser agent", "t-dim");
+          } else if (sub === "health") {
+            if (!window.sandbox.configured()) { say("sandbox: set a URL first (`sandbox set <url>`) and sign in", "t-err"); break; }
+            say("pinging your sandbox…", "t-dim");
+            window.sandbox.health().then(function (h) {
+              say("✓ sandbox online", "t-ok");
+              say("  agents: " + ((h.agents && h.agents.join(", ")) || "none detected"), "t-dim");
+            }).catch(function (e) { say("✗ " + e.message, "t-err"); });
+          } else {
+            var u = window.sandbox.url && window.sandbox.url();
+            if (u) {
+              say("cloud sandbox: " + u, "t-ok");
+              say("  claude runs the REAL Claude Code CLI on a real filesystem here.", "t-dim");
+              say("  `sandbox health` to check · `sandbox clear` to go back to the in-browser agent.", "t-dim");
+            } else {
+              say("cloud sandbox: not configured", "t-dim");
+              say("  set it with `sandbox set https://inspirenavada-sandbox.<you>.workers.dev`", "t-dim");
+              say("  until then `claude` uses the in-browser agent (still real, but browser-side).", "t-dim");
+            }
           }
           break;
         }

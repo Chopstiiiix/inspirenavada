@@ -263,6 +263,110 @@
     },
   };
 
+  // ── cloud sandbox bridge (Phase 2) ──────────────────────
+  // Talks to the separate `inspirenavada-sandbox` Worker, which runs the REAL
+  // Claude Code CLI in a per-user Cloudflare Container. We send the Supabase
+  // access token (proves who the user is) + the user's own Anthropic key
+  // (powers the CLI in their own container). The service URL is set once via
+  // `sandbox set <url>` in the terminal and remembered in localStorage; until
+  // then `claude` falls back to the in-browser agent, so nothing changes.
+  var SANDBOX_URL_STORE = "in-sandbox-url";
+  function sandboxUrl() {
+    try {
+      return String(window.IN_SANDBOX_URL || localStorage.getItem(SANDBOX_URL_STORE) || "").replace(/\/+$/, "");
+    } catch (e) { return String(window.IN_SANDBOX_URL || "").replace(/\/+$/, ""); }
+  }
+  function sandboxHeaders(withKey) {
+    var h = {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + (currentSession ? currentSession.access_token : ""),
+    };
+    if (withKey) h["X-Anthropic-Key"] = claudeKeyGet();
+    return h;
+  }
+  function sandboxApi(path, body) {
+    var url = sandboxUrl();
+    if (!url) return Promise.reject(new Error("cloud sandbox not configured"));
+    if (!currentSession) return Promise.reject(new Error("sign in first"));
+    return fetch(url + path, {
+      method: "POST",
+      headers: sandboxHeaders(true),
+      body: body ? JSON.stringify(body) : "{}",
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (j) {
+        if (!res.ok) throw new Error(j.error || ("sandbox error " + res.status));
+        return j;
+      });
+    });
+  }
+  // Parse the service's SSE stream ({type:'text'|'stderr'|'error'|'done'}).
+  function readSandboxSSE(res, handlers) {
+    handlers = handlers || {};
+    var reader = res.body.getReader();
+    var dec = new TextDecoder();
+    var buf = "";
+    function pump() {
+      return reader.read().then(function (r) {
+        if (r.done) { if (handlers.onDone) handlers.onDone({}); return; }
+        buf += dec.decode(r.value, { stream: true });
+        var idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          var chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          var data = chunk.split("\n")
+            .filter(function (l) { return l.indexOf("data:") === 0; })
+            .map(function (l) { return l.slice(5).replace(/^ /, ""); })
+            .join("");
+          if (!data) continue;
+          var ev; try { ev = JSON.parse(data); } catch (e) { continue; }
+          if (ev.type === "text" && handlers.onText) handlers.onText(ev.text);
+          else if (ev.type === "stderr" && handlers.onStderr) handlers.onStderr(ev.text);
+          else if (ev.type === "error" && handlers.onError) handlers.onError(new Error(ev.error || "sandbox error"));
+          else if (ev.type === "done" && handlers.onDone) handlers.onDone(ev);
+        }
+        return pump();
+      });
+    }
+    return pump();
+  }
+
+  window.sandbox = {
+    url: sandboxUrl,
+    configured: function () { return !!(authGet() && sandboxUrl()); },
+    setUrl: function (u) {
+      try {
+        if (u) localStorage.setItem(SANDBOX_URL_STORE, String(u).replace(/\/+$/, ""));
+        else localStorage.removeItem(SANDBOX_URL_STORE);
+      } catch (e) { /* storage unavailable */ }
+    },
+    health: function () { return sandboxApi("/api/health", null); },
+    // Stream a real `claude --print` run. Returns a promise with an .abort().
+    exec: function (prompt, model, handlers) {
+      var url = sandboxUrl();
+      if (!url) return Promise.reject(new Error("cloud sandbox not configured"));
+      if (!currentSession) return Promise.reject(new Error("sign in first"));
+      if (!claudeKeyGet()) return Promise.reject(new Error("connect your Anthropic key first"));
+      var ctrl = new AbortController();
+      var p = fetch(url + "/api/exec", {
+        method: "POST",
+        headers: sandboxHeaders(true),
+        body: JSON.stringify({ prompt: prompt, model: model }),
+        signal: ctrl.signal,
+      }).then(function (res) {
+        if (!res.ok) {
+          return res.json().catch(function () { return {}; }).then(function (e) {
+            throw new Error(e.error || ("sandbox error " + res.status));
+          });
+        }
+        return readSandboxSSE(res, handlers);
+      });
+      p.abort = function () { ctrl.abort(); };
+      return p;
+    },
+    list: function () { return sandboxApi("/api/fs/list", null); },
+    read: function (path) { return sandboxApi("/api/fs/read", { path: path }); },
+    write: function (path, content) { return sandboxApi("/api/fs/write", { path: path, content: content }); },
+  };
+
   // ── per-user dev-mode workspace (sandbox FS + git state) ──
   window.inWorkspace = {
     load: function () {
