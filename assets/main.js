@@ -152,20 +152,30 @@
     }
   }
 
-  // ── demo sign-in: powers the per-login dev mode unlock ──
-  // logged in  -> the access code is remembered until sign-out (localStorage,
-  //               keyed to a per-login id, so every fresh login re-asks)
+  // ── real sign-in (Supabase auth) ─────────────────────────
+  // logged in  -> the dev-mode access code is remembered until sign-out
+  //               (localStorage, keyed to a per-login id, so every fresh
+  //               login re-asks); the code itself is verified server-side
   // signed out -> guests fall back to a per-tab unlock (sessionStorage)
-  var AUTH_KEY = "in-auth";
+  var SUPA_URL = "https://calbklvtnewbroyllamj.supabase.co";
+  var SUPA_KEY = "sb_publishable_Sh44o7DVvr9_CjJUCMWL9w_znAyX62u";
   var UNLOCK_LOGIN_KEY = "in-devmode-unlock";
   var authActions = document.querySelector(".masthead__actions");
   var signinEl = null;
 
+  var sb = window.supabase ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
+  var currentSession = null;
+
   function authGet() {
-    try {
-      var raw = localStorage.getItem(AUTH_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
+    if (!currentSession || !currentSession.user) return null;
+    var u = currentSession.user;
+    var handle = (u.user_metadata && u.user_metadata.handle) || (u.email || "builder").split("@")[0];
+    return {
+      handle: handle,
+      // stable across reloads within one login; changes on every fresh
+      // sign-in, so the dev-mode gate re-asks after sign-out -> sign-in
+      loginId: u.id + "." + (Date.parse(u.last_sign_in_at || "") || 0),
+    };
   }
   var CLAUDE_KEY_STORE = "in-claude-key";
 
@@ -173,11 +183,19 @@
     get: authGet,
     signOut: function () {
       try {
-        localStorage.removeItem(AUTH_KEY);
         localStorage.removeItem(UNLOCK_LOGIN_KEY); // next login re-asks for the code
         sessionStorage.removeItem(CLAUDE_KEY_STORE); // API key rides the login lifecycle
       } catch (e) { /* storage unavailable */ }
-      renderAuth();
+      if (sb) sb.auth.signOut(); // onAuthStateChange re-renders the masthead
+      else renderAuth();
+    },
+    // dev-mode access code check — the code lives server-side, never in this bundle
+    verifyDevCode: function (code) {
+      if (!sb) return Promise.reject(new Error("auth service unavailable"));
+      return sb.rpc("redeem_devmode_code", { input_code: code }).then(function (res) {
+        if (res.error) throw new Error(res.error.message);
+        return res.data === true;
+      });
     },
   };
 
@@ -258,30 +276,83 @@
         '<div class="signin__panel">' +
           '<p class="signin__kicker mono-sm">welcome back</p>' +
           "<h3>Sign in to InspireNavada</h3>" +
-          '<label class="mono-sm" for="signin-handle">builder handle</label>' +
+          '<label class="mono-sm" for="signin-email">email</label>' +
+          '<input id="signin-email" class="signin__input" type="email" placeholder="you@example.com" autocomplete="email" spellcheck="false" />' +
+          '<label class="mono-sm" for="signin-password">password</label>' +
+          '<input id="signin-password" class="signin__input" type="password" placeholder="••••••••" autocomplete="current-password" />' +
+          '<label class="mono-sm" for="signin-handle">builder handle <span class="signin__opt">· new accounts only</span></label>' +
           '<input id="signin-handle" class="signin__input" placeholder="@you" maxlength="24" autocomplete="username" spellcheck="false" />' +
+          '<p class="signin__status mono-sm"> </p>' +
           '<button class="btn btn--ink signin__go" type="button">Sign in</button>' +
+          '<button class="btn btn--ghost signin__signup" type="button">Create account</button>' +
           '<button class="signin__cancel mono-sm" type="button">cancel · esc</button>' +
         "</div>";
       document.body.appendChild(signinEl);
 
+      var emailInput = signinEl.querySelector("#signin-email");
+      var passInput = signinEl.querySelector("#signin-password");
       var handleInput = signinEl.querySelector("#signin-handle");
-      var submit = function () {
+      var statusEl = signinEl.querySelector(".signin__status");
+      var busy = false;
+
+      function status(msg, isError) {
+        statusEl.textContent = msg || " ";
+        statusEl.className = "signin__status mono-sm" + (isError ? " is-bad" : "");
+      }
+
+      function creds() {
+        var email = emailInput.value.trim();
+        var password = passInput.value;
+        if (!email || !password) {
+          status("email and password are both needed", true);
+          return null;
+        }
+        return { email: email, password: password };
+      }
+
+      function submitSignIn() {
+        if (busy || !sb) { if (!sb) status("auth service unavailable — try again shortly", true); return; }
+        var c = creds();
+        if (!c) return;
+        busy = true;
+        status("signing in…");
+        sb.auth.signInWithPassword(c).then(function (res) {
+          busy = false;
+          if (res.error) { status(res.error.message, true); return; }
+          status(" ");
+          passInput.value = "";
+          signinClose(); // onAuthStateChange re-renders the masthead
+        });
+      }
+
+      function submitSignUp() {
+        if (busy || !sb) { if (!sb) status("auth service unavailable — try again shortly", true); return; }
+        var c = creds();
+        if (!c) return;
         var handle = handleInput.value.trim().replace(/^@+/, "");
-        if (!handle) { handleInput.focus(); return; }
-        try {
-          localStorage.setItem(AUTH_KEY, JSON.stringify({
-            handle: handle,
-            loginId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-            ts: Date.now(),
-          }));
-        } catch (e) { /* storage unavailable */ }
-        signinClose();
-        renderAuth();
-      };
-      signinEl.querySelector(".signin__go").addEventListener("click", submit);
-      handleInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") submit();
+        if (!handle) { status("pick a builder handle for your new account", true); return; }
+        busy = true;
+        status("creating your account…");
+        sb.auth.signUp({
+          email: c.email,
+          password: c.password,
+          options: { data: { handle: handle } },
+        }).then(function (res) {
+          busy = false;
+          if (res.error) { status(res.error.message, true); return; }
+          if (res.data && res.data.session) {
+            passInput.value = "";
+            signinClose(); // signed straight in
+          } else {
+            status("account created — confirm via the email we sent, then sign in");
+          }
+        });
+      }
+
+      signinEl.querySelector(".signin__go").addEventListener("click", submitSignIn);
+      signinEl.querySelector(".signin__signup").addEventListener("click", submitSignUp);
+      passInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") submitSignIn();
       });
       signinEl.querySelector(".signin__cancel").addEventListener("click", signinClose);
       signinEl.addEventListener("mousedown", function (e) {
@@ -291,9 +362,9 @@
         if (e.key === "Escape" && signinEl.classList.contains("is-open")) signinClose();
       });
     }
-    signinEl.querySelector("#signin-handle").value = "";
+    signinEl.querySelector(".signin__status").textContent = " ";
     signinEl.classList.add("is-open");
-    setTimeout(function () { signinEl.querySelector("#signin-handle").focus(); }, 60);
+    setTimeout(function () { signinEl.querySelector("#signin-email").focus(); }, 60);
   }
 
   function renderAuth() {
@@ -336,6 +407,14 @@
     }
   }
   renderAuth();
+
+  // session restore + live auth state -> masthead
+  if (sb) {
+    sb.auth.onAuthStateChange(function (event, session) {
+      currentSession = session;
+      renderAuth();
+    });
+  }
 
   // close the account dropdown on outside click or Escape
   document.addEventListener("click", function (e) {

@@ -1752,8 +1752,7 @@
   };
 
   /* ── access gate (vanilla port of components/ui/otp-input.tsx) ── */
-  var GATE_CODE = "032032";
-  var GATE_LEN = GATE_CODE.length;
+  var GATE_LEN = 6; // the code itself lives server-side; see inAuth.verifyDevCode
   var UNLOCK_KEY = "in-devmode-unlocked";      // guests: this tab only
   var UNLOCK_LOGIN_KEY = "in-devmode-unlock";  // logged in: until sign-out
   var gateEl = null, gateBoxes = null, gateInputs = [], gateStatus = null, gateBusy = false;
@@ -1778,34 +1777,46 @@
   function gateCheck() {
     if (gateBusy || gateValue().length < GATE_LEN) return;
     gateBusy = true;
-    if (gateValue() === GATE_CODE) {
-      gateBoxes.classList.add("is-valid");
-      gateInputs.forEach(function (i) { i.disabled = true; });
-      gateStatus.textContent = "✓ access granted";
-      gateStatus.className = "gate__status mono-sm is-ok";
-      setTimeout(function () {
-        var user = window.inAuth && window.inAuth.get();
-        try {
-          if (user) {
-            // logged in: unlock survives reloads, keyed to this login —
-            // signing out (or any fresh login) requires the code again
-            localStorage.setItem(UNLOCK_LOGIN_KEY, user.loginId);
-          } else {
-            sessionStorage.setItem(UNLOCK_KEY, "1");
+    gateStatus.textContent = "checking…";
+    gateStatus.className = "gate__status mono-sm";
+    var verify = window.inAuth && window.inAuth.verifyDevCode
+      ? window.inAuth.verifyDevCode(gateValue())
+      : Promise.reject(new Error("verification unavailable"));
+    verify.then(function (ok) {
+      if (ok) {
+        gateBoxes.classList.add("is-valid");
+        gateInputs.forEach(function (i) { i.disabled = true; });
+        gateStatus.textContent = "✓ access granted";
+        gateStatus.className = "gate__status mono-sm is-ok";
+        setTimeout(function () {
+          var user = window.inAuth && window.inAuth.get();
+          try {
+            if (user) {
+              // logged in: unlock survives reloads, keyed to this login —
+              // signing out (or any fresh login) requires the code again
+              localStorage.setItem(UNLOCK_LOGIN_KEY, user.loginId);
+            } else {
+              sessionStorage.setItem(UNLOCK_KEY, "1");
+            }
+          } catch (e) { /* private mode */ }
+          gateClose();
+          if (swInput && !swInput.checked) {
+            swInput.checked = true;
+            swInput.dispatchEvent(new Event("change"));
           }
-        } catch (e) { /* private mode */ }
-        gateClose();
-        if (swInput && !swInput.checked) {
-          swInput.checked = true;
-          swInput.dispatchEvent(new Event("change"));
-        }
-      }, 550);
-    } else {
+        }, 550);
+      } else {
+        gateSetError(true);
+        gateStatus.textContent = "✗ wrong code";
+        gateStatus.className = "gate__status mono-sm is-bad";
+        setTimeout(function () { gateReset(true); }, 650);
+      }
+    }).catch(function (err) {
       gateSetError(true);
-      gateStatus.textContent = "✗ wrong code";
+      gateStatus.textContent = "✗ couldn't verify — " + err.message;
       gateStatus.className = "gate__status mono-sm is-bad";
-      setTimeout(function () { gateReset(true); }, 650);
-    }
+      setTimeout(function () { gateReset(true); }, 1400);
+    });
   }
 
   function buildGate() {

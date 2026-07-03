@@ -1962,3 +1962,9 @@ body.dev-mode .dock {
   line-height: 1.5;
   margin: 0.1rem 0 0.3rem;
 }
+
+/* sign-in modal: status + optional-field hint */
+.signin__status { min-height: 1.1em; margin: 0.2rem 0 0.1rem; color: rgba(20, 20, 20, 0.55); }
+.signin__status.is-bad { color: var(--red); }
+.signin__opt { color: rgba(20, 20, 20, 0.4); text-transform: none; letter-spacing: 0.02em; }
+.signin__signup { justify-content: center; margin-top: 0.2rem; }
