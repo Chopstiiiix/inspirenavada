@@ -16,6 +16,11 @@
   function rand(min, max) { return Math.floor(min + Math.random() * (max - min + 1)); }
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
   function pretty(obj) { return JSON.stringify(obj, null, 2); }
+  // signed-in builders get their handle everywhere the shell says "builder"
+  function currentUser() {
+    var u = window.inAuth && window.inAuth.get();
+    return u && u.handle ? String(u.handle) : "builder";
+  }
 
   /* ── syntax highlighting (used by editor, terminal, api) ── */
   function hlWith(src, re, classNames) {
@@ -382,7 +387,8 @@
           '<button class="win__light win__light--min" type="button" aria-label="Minimize"></button>' +
           '<button class="win__light win__light--zoom" type="button" aria-label="Zoom"></button>' +
         "</div>" +
-        '<div class="win__title"><strong>' + esc(name) + "</strong><span>" + esc(app.subtitle) + "</span></div>" +
+        '<div class="win__title"><strong>' + esc(name) + "</strong><span>" +
+          esc(typeof app.subtitle === "function" ? app.subtitle() : app.subtitle) + "</span></div>" +
       "</header>" +
       '<div class="win__body"></div>' +
       '<div class="win__grip" aria-hidden="true"></div>';
@@ -485,7 +491,7 @@
     var hist = [], hi = 0;
 
     function pathStr() { return "~" + (cwd.length ? "/" + cwd.join("/") : ""); }
-    function ps1Str() { return "builder@inspirenavada " + pathStr() + " %"; }
+    function ps1Str() { return currentUser() + "@inspirenavada " + pathStr() + " %"; }
     function prompt() { ps1.textContent = ps1Str(); }
     function print(html) {
       var d = document.createElement("div");
@@ -532,7 +538,7 @@
           else print(lsHTML(node));
           break;
         case "pwd":
-          say("/home/builder" + (cwd.length ? "/" + cwd.join("/") : ""));
+          say("/home/" + currentUser() + (cwd.length ? "/" + cwd.join("/") : ""));
           break;
         case "cd":
           segs = resolvePath(cwd, args[0] || "~");
@@ -599,7 +605,7 @@
           hist.forEach(function (h2, i) { say("  " + (i + 1) + "  " + h2, "t-dim"); });
           break;
         case "whoami":
-          say("builder");
+          say(currentUser());
           break;
         case "date":
           say(new Date().toString());
@@ -651,7 +657,7 @@
         case "neofetch": {
           var up = Math.max(1, Math.round((Date.now() - bootTime) / 60000));
           print(
-            '<span class="t-red">        *        </span>  builder@inspirenavada\n' +
+            '<span class="t-red">        *        </span>  ' + esc(currentUser()) + "@inspirenavada\n" +
             '<span class="t-red">      *   *      </span>  <span class="t-dim">─────────────────────</span>\n' +
             '<span class="t-red">    *   *   *    </span>  OS: InspireNavadaOS 1.0 (dev mode)\n' +
             '<span class="t-red">      *   *      </span>  Shell: zsh 5.9 · Uptime: ' + up + "m\n" +
@@ -660,7 +666,7 @@
           break;
         }
         case "sudo":
-          say("builder is not in the sudoers file. This incident will be reported.", "t-err");
+          say(currentUser() + " is not in the sudoers file. This incident will be reported.", "t-err");
           break;
         case "exit":
           closeApp("Terminal");
@@ -930,7 +936,7 @@
         if (!msg || !GIT.staged.length) return;
         var hash = "";
         for (var i = 0; i < 7; i++) hash += "0123456789abcdef"[rand(0, 15)];
-        GIT.log.unshift({ hash: hash, msg: msg, meta: "builder · just now" });
+        GIT.log.unshift({ hash: hash, msg: msg, meta: currentUser() + " · just now" });
         GIT.staged = [];
         GIT.ahead++;
         gitEmit();
@@ -1341,7 +1347,7 @@
 
   /* ── app registry ─────────────────────────────────────── */
   var APPS = {
-    "Terminal": { w: 920, h: 580, subtitle: "zsh — builder@inspirenavada", build: buildTerminal },
+    "Terminal": { w: 920, h: 580, subtitle: function () { return "zsh — " + currentUser() + "@inspirenavada"; }, build: buildTerminal },
     "Code Editor": { w: 1080, h: 660, subtitle: "~/inspirenavada", build: buildEditor },
     "Git": { w: 760, h: 660, subtitle: "inspirenavada — main", build: buildGit },
     "Database": { w: 980, h: 620, subtitle: "psql — inspire_prod", build: buildDatabase },
@@ -1349,6 +1355,145 @@
     "Containers": { w: 940, h: 540, subtitle: "6 containers · local context", build: buildContainers },
     "Logs": { w: 960, h: 580, subtitle: "inspire-api — live tail", build: buildLogs },
     "Profiler": { w: 900, h: 560, subtitle: "this very page, live", build: buildProfiler },
+  };
+
+  /* ── access gate (vanilla port of components/ui/otp-input.tsx) ── */
+  var GATE_CODE = "032032";
+  var GATE_LEN = GATE_CODE.length;
+  var UNLOCK_KEY = "in-devmode-unlocked";      // guests: this tab only
+  var UNLOCK_LOGIN_KEY = "in-devmode-unlock";  // logged in: until sign-out
+  var gateEl = null, gateBoxes = null, gateInputs = [], gateStatus = null, gateBusy = false;
+
+  function gateValue() {
+    return gateInputs.map(function (i) { return i.value; }).join("");
+  }
+  function gateSetError(on) {
+    gateBoxes.classList.toggle("is-error", on);
+  }
+  function gateReset(focus) {
+    gateBusy = false;
+    gateBoxes.classList.remove("is-error", "is-valid");
+    gateInputs.forEach(function (i) { i.value = ""; i.disabled = false; });
+    gateStatus.textContent = " ";
+    gateStatus.className = "gate__status mono-sm";
+    if (focus) gateInputs[0].focus();
+  }
+  function gateClose() {
+    if (gateEl) gateEl.classList.remove("is-open");
+  }
+  function gateCheck() {
+    if (gateBusy || gateValue().length < GATE_LEN) return;
+    gateBusy = true;
+    if (gateValue() === GATE_CODE) {
+      gateBoxes.classList.add("is-valid");
+      gateInputs.forEach(function (i) { i.disabled = true; });
+      gateStatus.textContent = "✓ access granted";
+      gateStatus.className = "gate__status mono-sm is-ok";
+      setTimeout(function () {
+        var user = window.inAuth && window.inAuth.get();
+        try {
+          if (user) {
+            // logged in: unlock survives reloads, keyed to this login —
+            // signing out (or any fresh login) requires the code again
+            localStorage.setItem(UNLOCK_LOGIN_KEY, user.loginId);
+          } else {
+            sessionStorage.setItem(UNLOCK_KEY, "1");
+          }
+        } catch (e) { /* private mode */ }
+        gateClose();
+        if (swInput && !swInput.checked) {
+          swInput.checked = true;
+          swInput.dispatchEvent(new Event("change"));
+        }
+      }, 550);
+    } else {
+      gateSetError(true);
+      gateStatus.textContent = "✗ wrong code";
+      gateStatus.className = "gate__status mono-sm is-bad";
+      setTimeout(function () { gateReset(true); }, 650);
+    }
+  }
+
+  function buildGate() {
+    gateEl = document.createElement("div");
+    gateEl.className = "gate";
+    gateEl.setAttribute("role", "dialog");
+    gateEl.setAttribute("aria-label", "Dev mode access code");
+    var boxes = "";
+    for (var i = 0; i < GATE_LEN; i++) {
+      boxes += '<input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Digit ' + (i + 1) + '" />';
+    }
+    gateEl.innerHTML =
+      '<div class="gate__panel">' +
+        '<p class="gate__kicker mono-sm">restricted · dev mode</p>' +
+        "<h3>Enter access code</h3>" +
+        '<div class="gate__boxes">' + boxes + "</div>" +
+        '<p class="gate__status mono-sm"> </p>' +
+        '<p class="gate__hint mono-sm">hint: the hackathon on the marquee, twice</p>' +
+        '<p class="gate__note mono-sm"></p>' +
+        '<button class="gate__cancel mono-sm" type="button">cancel · esc</button>' +
+      "</div>";
+    document.body.appendChild(gateEl);
+
+    gateBoxes = gateEl.querySelector(".gate__boxes");
+    gateStatus = gateEl.querySelector(".gate__status");
+    gateInputs = Array.prototype.slice.call(gateBoxes.querySelectorAll("input"));
+
+    gateInputs.forEach(function (input, index) {
+      input.addEventListener("input", function () {
+        var v = input.value.replace(/\D/g, "").slice(0, 1);
+        input.value = v;
+        if (v && index < GATE_LEN - 1) gateInputs[index + 1].focus(); // auto-advance
+        gateCheck();
+      });
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Backspace") {
+          if (!input.value && index > 0) gateInputs[index - 1].focus(); // auto-retreat
+        } else if (e.key === "ArrowLeft" && index > 0) {
+          e.preventDefault();
+          gateInputs[index - 1].focus();
+        } else if (e.key === "ArrowRight" && index < GATE_LEN - 1) {
+          e.preventDefault();
+          gateInputs[index + 1].focus();
+        }
+      });
+      input.addEventListener("paste", function (e) {
+        e.preventDefault();
+        var digits = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, GATE_LEN);
+        if (!digits) return;
+        gateInputs.forEach(function (inp, i) { inp.value = digits[i] || ""; });
+        gateInputs[Math.min(digits.length, GATE_LEN - 1)].focus();
+        gateCheck();
+      });
+    });
+
+    gateEl.querySelector(".gate__cancel").addEventListener("click", gateClose);
+    gateEl.addEventListener("mousedown", function (e) {
+      if (e.target === gateEl) gateClose(); // click the backdrop to dismiss
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && gateEl.classList.contains("is-open")) gateClose();
+    });
+  }
+
+  window.devModeGate = {
+    isUnlocked: function () {
+      var user = window.inAuth && window.inAuth.get();
+      try {
+        if (user) return localStorage.getItem(UNLOCK_LOGIN_KEY) === user.loginId;
+        return sessionStorage.getItem(UNLOCK_KEY) === "1";
+      } catch (e) { return false; }
+    },
+    open: function () {
+      if (!gateEl) buildGate();
+      gateReset(false);
+      var user = window.inAuth && window.inAuth.get();
+      gateEl.querySelector(".gate__note").textContent = user
+        ? "signed in as @" + user.handle + " — remembered until you sign out"
+        : "not signed in — remembered for this tab only";
+      gateEl.classList.add("is-open");
+      setTimeout(function () { gateInputs[0].focus(); }, 60);
+    },
   };
 
   /* ── wiring ───────────────────────────────────────────── */

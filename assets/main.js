@@ -100,6 +100,12 @@
       var syncDevMode = function () {
         var isOn = document.body.classList.contains("dev-mode");
         if (swInput.checked === isOn) return;
+        // dev mode is gated: flipping on without the access code opens the code prompt
+        if (swInput.checked && window.devModeGate && !window.devModeGate.isUnlocked()) {
+          swInput.checked = false;
+          window.devModeGate.open();
+          return;
+        }
         if (swInput.checked) {
           var r = iswitch.getBoundingClientRect();
           var housing = iswitch.querySelector(".iswitch__housing").getBoundingClientRect();
@@ -145,6 +151,133 @@
       });
     }
   }
+
+  // ── demo sign-in: powers the per-login dev mode unlock ──
+  // logged in  -> the access code is remembered until sign-out (localStorage,
+  //               keyed to a per-login id, so every fresh login re-asks)
+  // signed out -> guests fall back to a per-tab unlock (sessionStorage)
+  var AUTH_KEY = "in-auth";
+  var UNLOCK_LOGIN_KEY = "in-devmode-unlock";
+  var authActions = document.querySelector(".masthead__actions");
+  var signinEl = null;
+
+  function authGet() {
+    try {
+      var raw = localStorage.getItem(AUTH_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  window.inAuth = {
+    get: authGet,
+    signOut: function () {
+      try {
+        localStorage.removeItem(AUTH_KEY);
+        localStorage.removeItem(UNLOCK_LOGIN_KEY); // next login re-asks for the code
+      } catch (e) { /* storage unavailable */ }
+      renderAuth();
+    },
+  };
+
+  function signinClose() {
+    if (signinEl) signinEl.classList.remove("is-open");
+  }
+  function signinOpen() {
+    if (!signinEl) {
+      signinEl = document.createElement("div");
+      signinEl.className = "signin";
+      signinEl.setAttribute("role", "dialog");
+      signinEl.setAttribute("aria-label", "Sign in");
+      signinEl.innerHTML =
+        '<div class="signin__panel">' +
+          '<p class="signin__kicker mono-sm">welcome back</p>' +
+          "<h3>Sign in to InspireNavada</h3>" +
+          '<label class="mono-sm" for="signin-handle">builder handle</label>' +
+          '<input id="signin-handle" class="signin__input" placeholder="@you" maxlength="24" autocomplete="username" spellcheck="false" />' +
+          '<button class="btn btn--ink signin__go" type="button">Sign in</button>' +
+          '<button class="signin__cancel mono-sm" type="button">cancel · esc</button>' +
+        "</div>";
+      document.body.appendChild(signinEl);
+
+      var handleInput = signinEl.querySelector("#signin-handle");
+      var submit = function () {
+        var handle = handleInput.value.trim().replace(/^@+/, "");
+        if (!handle) { handleInput.focus(); return; }
+        try {
+          localStorage.setItem(AUTH_KEY, JSON.stringify({
+            handle: handle,
+            loginId: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+            ts: Date.now(),
+          }));
+        } catch (e) { /* storage unavailable */ }
+        signinClose();
+        renderAuth();
+      };
+      signinEl.querySelector(".signin__go").addEventListener("click", submit);
+      handleInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") submit();
+      });
+      signinEl.querySelector(".signin__cancel").addEventListener("click", signinClose);
+      signinEl.addEventListener("mousedown", function (e) {
+        if (e.target === signinEl) signinClose();
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && signinEl.classList.contains("is-open")) signinClose();
+      });
+    }
+    signinEl.querySelector("#signin-handle").value = "";
+    signinEl.classList.add("is-open");
+    setTimeout(function () { signinEl.querySelector("#signin-handle").focus(); }, 60);
+  }
+
+  function renderAuth() {
+    if (!authActions) return;
+    var user = authGet();
+    if (user) {
+      authActions.innerHTML =
+        '<div class="auth-menu">' +
+          '<button class="auth-chip mono-sm" type="button" aria-haspopup="menu" aria-expanded="false">' +
+            "@" + String(user.handle).replace(/[&<>"]/g, "") +
+            '<span class="auth-chip__caret" aria-hidden="true">▾</span>' +
+          "</button>" +
+          '<div class="auth-menu__drop" role="menu">' +
+            '<button class="auth-menu__item auth-menu__item--out mono-sm" type="button" id="sign-out" role="menuitem">Sign out</button>' +
+          "</div>" +
+        "</div>";
+      var menu = authActions.querySelector(".auth-menu");
+      var chip = menu.querySelector(".auth-chip");
+      chip.addEventListener("click", function () {
+        var open = menu.classList.toggle("is-open");
+        chip.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      menu.querySelector("#sign-out").addEventListener("click", window.inAuth.signOut);
+    } else {
+      authActions.innerHTML =
+        '<a class="btn btn--ghost" href="#" id="sign-in">Sign in</a>' +
+        '<a class="btn btn--ink" href="#join">Join free</a>';
+      authActions.querySelector("#sign-in").addEventListener("click", function (e) {
+        e.preventDefault();
+        signinOpen();
+      });
+    }
+  }
+  renderAuth();
+
+  // close the account dropdown on outside click or Escape
+  document.addEventListener("click", function (e) {
+    var open = document.querySelector(".auth-menu.is-open");
+    if (open && !open.contains(e.target)) {
+      open.classList.remove("is-open");
+      open.querySelector(".auth-chip").setAttribute("aria-expanded", "false");
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    var open = document.querySelector(".auth-menu.is-open");
+    if (open) {
+      open.classList.remove("is-open");
+      open.querySelector(".auth-chip").setAttribute("aria-expanded", "false");
+    }
+  });
 
   // tab bars (hackathon detail page)
   var tabButtons = Array.prototype.slice.call(document.querySelectorAll(".tabbar button[data-tab]"));
