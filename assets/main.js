@@ -167,13 +167,80 @@
       return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
+  var CLAUDE_KEY_STORE = "in-claude-key";
+
   window.inAuth = {
     get: authGet,
     signOut: function () {
       try {
         localStorage.removeItem(AUTH_KEY);
         localStorage.removeItem(UNLOCK_LOGIN_KEY); // next login re-asks for the code
+        sessionStorage.removeItem(CLAUDE_KEY_STORE); // API key rides the login lifecycle
       } catch (e) { /* storage unavailable */ }
+      renderAuth();
+    },
+  };
+
+  // ── bring-your-own-key Claude link ──────────────────────
+  // The key lives in sessionStorage only (this tab, this login) and is sent
+  // nowhere except api.anthropic.com — the site has no backend to leak it to.
+  var keyEl = null;
+
+  function claudeKeyGet() {
+    try { return sessionStorage.getItem(CLAUDE_KEY_STORE) || ""; } catch (e) { return ""; }
+  }
+  function keyModalClose() {
+    if (keyEl) keyEl.classList.remove("is-open");
+  }
+  function keyModalOpen() {
+    if (!authGet()) return;
+    if (!keyEl) {
+      keyEl = document.createElement("div");
+      keyEl.className = "signin";
+      keyEl.setAttribute("role", "dialog");
+      keyEl.setAttribute("aria-label", "Connect Claude");
+      keyEl.innerHTML =
+        '<div class="signin__panel">' +
+          '<p class="signin__kicker mono-sm">bring your own key</p>' +
+          "<h3>Connect Claude</h3>" +
+          '<label class="mono-sm" for="claude-key-input">anthropic api key</label>' +
+          '<input id="claude-key-input" class="signin__input" type="password" placeholder="sk-ant-…" spellcheck="false" autocomplete="off" />' +
+          '<p class="signin__note mono-sm">kept in this tab only, cleared when you sign out. `claude` in the dev-mode terminal becomes a real agent, billed to your account.</p>' +
+          '<button class="btn btn--ink signin__go" type="button">Connect</button>' +
+          '<button class="signin__cancel mono-sm" type="button">cancel · esc</button>' +
+        "</div>";
+      document.body.appendChild(keyEl);
+
+      var keyInput = keyEl.querySelector("#claude-key-input");
+      var submit = function () {
+        var key = keyInput.value.trim();
+        if (!key) { keyInput.focus(); return; }
+        try { sessionStorage.setItem(CLAUDE_KEY_STORE, key); } catch (e) { /* storage unavailable */ }
+        keyInput.value = "";
+        keyModalClose();
+        renderAuth();
+      };
+      keyEl.querySelector(".signin__go").addEventListener("click", submit);
+      keyInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") submit();
+      });
+      keyEl.querySelector(".signin__cancel").addEventListener("click", keyModalClose);
+      keyEl.addEventListener("mousedown", function (e) {
+        if (e.target === keyEl) keyModalClose();
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && keyEl.classList.contains("is-open")) keyModalClose();
+      });
+    }
+    keyEl.classList.add("is-open");
+    setTimeout(function () { keyEl.querySelector("#claude-key-input").focus(); }, 60);
+  }
+
+  window.claudeLink = {
+    getKey: function () { return authGet() ? claudeKeyGet() : ""; },
+    connect: keyModalOpen,
+    disconnect: function () {
+      try { sessionStorage.removeItem(CLAUDE_KEY_STORE); } catch (e) { /* storage unavailable */ }
       renderAuth();
     },
   };
@@ -240,6 +307,9 @@
             '<span class="auth-chip__caret" aria-hidden="true">▾</span>' +
           "</button>" +
           '<div class="auth-menu__drop" role="menu">' +
+            '<button class="auth-menu__item mono-sm" type="button" id="claude-link" role="menuitem">' +
+              (claudeKeyGet() ? "Disconnect Claude" : "Connect Claude") +
+            "</button>" +
             '<button class="auth-menu__item auth-menu__item--out mono-sm" type="button" id="sign-out" role="menuitem">Sign out</button>' +
           "</div>" +
         "</div>";
@@ -248,6 +318,11 @@
       chip.addEventListener("click", function () {
         var open = menu.classList.toggle("is-open");
         chip.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      menu.querySelector("#claude-link").addEventListener("click", function () {
+        menu.classList.remove("is-open");
+        if (claudeKeyGet()) window.claudeLink.disconnect();
+        else keyModalOpen();
       });
       menu.querySelector("#sign-out").addEventListener("click", window.inAuth.signOut);
     } else {

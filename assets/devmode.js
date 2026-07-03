@@ -310,11 +310,14 @@
   });
 
   function focusWin(rec) {
+    var wasFocused = focusedName === rec.name;
     Object.keys(wins).forEach(function (n) { wins[n].el.classList.toggle("is-focused", wins[n] === rec); });
     rec.el.classList.add("is-focused");
     rec.el.style.zIndex = ++zTop;
     focusedName = rec.name;
-    if (rec.onFocus) rec.onFocus();
+    // only steal keyboard focus on a window switch — re-clicks inside an
+    // already-focused window must not kill an in-progress text selection
+    if (rec.onFocus && !wasFocused) rec.onFocus();
   }
 
   function openApp(name) {
@@ -325,6 +328,7 @@
       if (rec.min) {
         rec.min = false;
         rec.el.classList.remove("win--min");
+        if (rec.onRelaunch) rec.onRelaunch();
       }
       focusWin(rec);
       return;
@@ -463,6 +467,158 @@
 
   /* ══ apps ════════════════════════════════════════════════ */
 
+  /* ── real Claude agent (BYO API key, browser → api.anthropic.com) ── */
+  var CLAUDE_MODEL = "claude-opus-4-8";
+
+  function allFiles() {
+    var res = [];
+    (function walk(n, p) {
+      Object.keys(n.children).forEach(function (k) {
+        var c = n.children[k];
+        if (c.type === "dir") walk(c, p + k + "/");
+        else res.push(p + k);
+      });
+    })(FS, "");
+    return res;
+  }
+
+  var AGENT_TOOLS = [
+    {
+      name: "list_files",
+      description: "List every file in the sandbox workspace (paths relative to the home directory ~).",
+      input_schema: { type: "object", properties: {}, additionalProperties: false },
+    },
+    {
+      name: "read_file",
+      description: "Read a file from the sandbox workspace. Call this before editing a file.",
+      input_schema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path relative to ~, e.g. inspirenavada/assets/main.js" },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "write_file",
+      description: "Create or overwrite a file in the sandbox workspace. Missing parent directories are created. The user sees the change in their Code Editor and Git apps.",
+      input_schema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path relative to ~" },
+          content: { type: "string", description: "Full new file content" },
+        },
+        required: ["path", "content"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "str_replace",
+      description: "Replace an exact string in a file with a new string. old_str must appear exactly once in the file.",
+      input_schema: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "Path relative to ~" },
+          old_str: { type: "string", description: "Exact text to replace (must be unique in the file)" },
+          new_str: { type: "string", description: "Replacement text" },
+        },
+        required: ["path", "old_str", "new_str"],
+        additionalProperties: false,
+      },
+    },
+  ];
+
+  function agentToolRun(name, input) {
+    var segs, node, parent, i;
+    try {
+      switch (name) {
+        case "list_files":
+          return { text: allFiles().map(function (p) { return "~/" + p; }).join("\n") };
+        case "read_file":
+          node = nodeAt(resolvePath([], String(input.path || "")));
+          if (!node) return { text: "No such file: " + input.path, is_error: true };
+          if (node.type === "dir") return { text: input.path + " is a directory", is_error: true };
+          return { text: node.content.slice(0, 40000) };
+        case "write_file": {
+          segs = resolvePath([], String(input.path || ""));
+          if (!segs.length) return { text: "write_file needs a file path", is_error: true };
+          parent = FS;
+          for (i = 0; i < segs.length - 1; i++) {
+            if (!parent.children[segs[i]]) parent.children[segs[i]] = D({});
+            parent = parent.children[segs[i]];
+            if (parent.type !== "dir") return { text: segs[i] + " is a file, not a directory", is_error: true };
+          }
+          parent.children[segs[segs.length - 1]] = F(String(input.content));
+          gitTouch("~/" + segs.join("/"));
+          fsEmit();
+          return { text: "Wrote ~/" + segs.join("/") + " (" + String(input.content).length + " chars)" };
+        }
+        case "str_replace": {
+          segs = resolvePath([], String(input.path || ""));
+          node = nodeAt(segs);
+          if (!node || node.type !== "file") return { text: "No such file: " + input.path, is_error: true };
+          var hits = node.content.split(String(input.old_str)).length - 1;
+          if (hits === 0) return { text: "old_str not found in " + input.path, is_error: true };
+          if (hits > 1) return { text: "old_str appears " + hits + " times in " + input.path + " — it must be unique", is_error: true };
+          node.content = node.content.replace(String(input.old_str), String(input.new_str));
+          gitTouch("~/" + segs.join("/"));
+          fsEmit();
+          return { text: "Edited ~/" + segs.join("/") };
+        }
+        default:
+          return { text: "Unknown tool: " + name, is_error: true };
+      }
+    } catch (e) {
+      return { text: "Tool failed: " + e.message, is_error: true };
+    }
+  }
+
+  function agentSystemPrompt() {
+    return (
+      "You are Claude Code, running inside InspireNavada's browser-based dev-mode desktop for user @" + currentUser() + ". " +
+      "You work on a small sandboxed virtual filesystem (home directory ~) via your tools; edits you make appear live in the user's Code Editor and Git apps. " +
+      "The project is 'inspirenavada', a static website with no build step. The platform's running hackathon is № 032 'The Offline-First Challenge' (closes 2026-07-19). " +
+      "Output rules: your replies render in a plain terminal, so write plain text — no markdown headings, bold, or fenced code blocks; indent code by two spaces instead. " +
+      "Be concise. Read files before editing them. When asked to build or change something, actually do it with the tools rather than describing what you would do."
+    );
+  }
+
+  function anthropicCall(key, messages) {
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 8192,
+        thinking: { type: "adaptive" },
+        system: agentSystemPrompt(),
+        tools: AGENT_TOOLS,
+        messages: messages,
+      }),
+    }).then(
+      function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) {
+            var msg = (j && j.error && j.error.message) || ("HTTP " + r.status);
+            var err = new Error(msg);
+            err.status = r.status;
+            throw err;
+          }
+          return j;
+        });
+      },
+      function () {
+        throw new Error("network error — couldn't reach api.anthropic.com");
+      }
+    );
+  }
+
   /* ── Terminal ─────────────────────────────────────────── */
   var OPEN_ALIASES = {
     terminal: "Terminal", term: "Terminal",
@@ -475,6 +631,7 @@
     profiler: "Profiler", perf: "Profiler",
   };
   var bootTime = Date.now();
+  var TERM_HIST = []; // survives relaunches so ↑ still recalls past commands
 
   function buildTerminal(body, rec) {
     body.classList.add("app-term");
@@ -488,10 +645,18 @@
     var input = body.querySelector(".term__in");
     var ps1 = body.querySelector(".term__ps1");
     var cwd = ["inspirenavada"];
-    var hist = [], hi = 0;
+    var hist = TERM_HIST;
+    var hi = hist.length;
+    var claudeMode = false;
+    var claudeIdle = 0;
+    var claudeReal = false;    // true when a linked API key backs the session
+    var claudeBusy = false;
+    var claudeHistory = [];
 
     function pathStr() { return "~" + (cwd.length ? "/" + cwd.join("/") : ""); }
-    function ps1Str() { return currentUser() + "@inspirenavada " + pathStr() + " %"; }
+    function ps1Str() {
+      return claudeMode ? "✻ >" : currentUser() + "@inspirenavada " + pathStr() + " %";
+    }
     function prompt() { ps1.textContent = ps1Str(); }
     function print(html) {
       var d = document.createElement("div");
@@ -512,12 +677,189 @@
       }).join("  ");
     }
 
+    /* `claude` — sandbox answers (used when no API key is connected) */
+    function claudeAnswer(q) {
+      var ql = q.toLowerCase();
+      var lines = [];
+      function a(text, cls) { lines.push('<span class="' + (cls || "") + '">' + esc(text) + "</span>"); }
+
+      var filePath = allFiles().filter(function (p) {
+        return ql.indexOf(p.split("/").pop().toLowerCase()) >= 0;
+      })[0];
+
+      if (/^\/?help$/.test(ql) || /what can you do/.test(ql)) {
+        a("Here in the sandbox I can:");
+        a("  · read this repo — mention any file by name and I'll open it");
+        a("  · summarise the project, your todos, or `git status`");
+        a("  · brief you on the running hackathon and the standings");
+        a("  /exit (or Ctrl+C) hands you back to zsh.", "t-dim");
+      } else if (/^(hi|hey|hello|yo|sup)\b/.test(ql)) {
+        a("Hey @" + currentUser() + ". Ready when you are — ask about the repo, your todos, or the hackathon.");
+      } else if (/who are you|what are you|are you real/.test(ql)) {
+        a("I'm Claude Code — well, a sandboxed stand-in running entirely in your browser tab.");
+        a("No API key, no network. Everything I know lives in this dev-mode toy box.", "t-dim");
+      } else if (filePath) {
+        var f = nodeAt(filePath.split("/"));
+        var preview = f.content.split("\n").slice(0, 6).join("\n");
+        a("Read ~/" + filePath + ":");
+        lines.push('<span class="hlt">' + hl(preview, extOf(filePath)) + "</span>");
+        a(f.content.split("\n").length > 6 ? "  …use `cat " + filePath.split("/").pop() + "` for the rest." : "  That's the whole file.", "t-dim");
+      } else if (/(files|repo|project|codebase|structure)/.test(ql)) {
+        a("This workspace has " + allFiles().length + " files:");
+        allFiles().forEach(function (p) { a("  ~/" + p, "t-path"); });
+        a("Static site, no build step — index.html plus assets. Refreshingly boring.", "t-dim");
+      } else if (/(todo|task|next|plan)/.test(ql)) {
+        a("From ~/notes/todo.md — the sync engine and the submission notes are still open:");
+        lines.push('<span class="hlt">' + hl(nodeAt(["notes", "todo.md"]).content.trim(), "md") + "</span>");
+        a("Deadline math says do the sync engine first.", "t-dim");
+      } else if (/(hackathon|offline|deadline|challenge|№|032)/.test(ql)) {
+        var msLeft = Date.parse("2026-07-19T23:59:00Z") - Date.now();
+        var d = Math.floor(msLeft / 86400000), h = Math.floor((msLeft % 86400000) / 3600000);
+        a("The Offline-First Challenge (№ 032): $12,000 pool, 642 entries, closes in " + d + "d " + h + "h.");
+        a("Build software that survives a dead connection — which, notably, I currently am.", "t-dim");
+      } else if (/(standing|leaderboard|rank|winning|score)/.test(ql)) {
+        a("Top of the № 032 board right now:");
+        DB.submissions.filter(function (s) { return s.hackathon_id === 32; })
+          .sort(function (x, y) { return y.score - x.score; })
+          .slice(0, 3)
+          .forEach(function (s, i) { a("  " + (i + 1) + ". " + s.team + " — " + s.score.toFixed(3)); });
+        a("Half a point separates the podium. Ship something.", "t-dim");
+      } else if (/(fix|bug|error|broken|debug)/.test(ql)) {
+        a("I'd normally read the stack trace, but this sandbox has a strict no-real-bugs policy.");
+        a("Try `git status` — " + (GIT.modified.length + GIT.staged.length ? "you do have uncommitted changes sitting there." : "your tree is clean, so the bug is hiding somewhere braver."), "t-dim");
+      } else if (/(commit|push|git)/.test(ql)) {
+        var pending = GIT.modified.length + GIT.staged.length;
+        a(pending
+          ? "You have " + pending + " changed file" + (pending === 1 ? "" : "s") + ". The Git app on the dock will stage and commit them."
+          : "Working tree is clean on `" + GIT.branch + "`" + (GIT.ahead ? ", but you're ahead by " + GIT.ahead + " — push it." : " and in sync. Nothing to do but write more code."));
+      } else if (/(joke|funny|laugh)/.test(ql)) {
+        a("A hackathon team named their sync engine \"Schrödinger\" — its state was unknowable until the demo. It did not survive observation.");
+      } else {
+        var stock = [
+          ["Good question. My honest sandbox answer: I'd start by reading the repo — mention a file by name and I'll open it."],
+          ["I only know this little world — the repo, the todos, hackathon № 032. Within it, I'm surprisingly confident. Try `/help`."],
+          ["That's beyond my sandbox, but the instinct is right. Locally I can read files, check git, or talk standings."],
+        ];
+        stock[claudeIdle++ % stock.length].forEach(function (t) { a(t); });
+      }
+      return lines;
+    }
+
+    function claudeReply(q) {
+      var thinking = document.createElement("div");
+      thinking.innerHTML = '<span class="t-dim">✻ thinking…</span>';
+      out.appendChild(thinking);
+      out.scrollTop = out.scrollHeight;
+      setTimeout(function () {
+        thinking.remove();
+        var lines = claudeAnswer(q);
+        print('<span class="t-claude">⏺</span> ' + lines[0]);
+        lines.slice(1).forEach(function (l) { print("  " + l); });
+        print("&nbsp;");
+      }, rand(450, 1000));
+    }
+
+    function exitClaude(msg) {
+      claudeMode = false;
+      claudeReal = false;
+      claudeBusy = false;
+      claudeHistory = [];
+      say(msg || "✻ session ended — back to zsh", "t-dim");
+      prompt();
+    }
+
+    /* real agent loop: Messages API + tool use over the sandbox FS */
+    function realClaudeReply(q) {
+      var key = window.claudeLink && window.claudeLink.getKey();
+      if (!key) { exitClaude("✻ key disconnected — back to zsh"); return; }
+      claudeBusy = true;
+      // keep the context bounded; a clean reset avoids orphaned tool_use pairs
+      if (claudeHistory.length > 60) {
+        claudeHistory = [];
+        say("✻ (long session — context reset)", "t-dim");
+      }
+      claudeHistory.push({ role: "user", content: q });
+
+      var thinking = document.createElement("div");
+      thinking.innerHTML = '<span class="t-dim">✻ working…</span>';
+      out.appendChild(thinking);
+      out.scrollTop = out.scrollHeight;
+      var hops = 0;
+
+      function printAgentText(text) {
+        var lines = esc(text.trim()).split("\n");
+        print('<span class="t-claude">⏺</span> ' + lines[0]);
+        lines.slice(1).forEach(function (l) { print("  " + l); });
+      }
+
+      function finish() {
+        thinking.remove();
+        print("&nbsp;");
+        claudeBusy = false;
+        out.scrollTop = out.scrollHeight;
+      }
+
+      function step() {
+        anthropicCall(key, claudeHistory).then(function (res) {
+          if (res.stop_reason === "refusal") {
+            say("✻ Claude declined that request.", "t-err");
+            claudeHistory.pop();
+            finish();
+            return;
+          }
+          claudeHistory.push({ role: "assistant", content: res.content });
+          res.content.forEach(function (block) {
+            if (block.type === "text" && block.text.trim()) printAgentText(block.text);
+          });
+          var toolUses = res.content.filter(function (b) { return b.type === "tool_use"; });
+          if (res.stop_reason === "tool_use" && toolUses.length && hops++ < 12) {
+            var results = toolUses.map(function (tu) {
+              var label = tu.name + "(" + (tu.input && (tu.input.path || "") || "") + ")";
+              print('<span class="t-dim">  ⚒ ' + esc(label) + "</span>");
+              var r = agentToolRun(tu.name, tu.input || {});
+              var result = { type: "tool_result", tool_use_id: tu.id, content: r.text };
+              if (r.is_error) result.is_error = true;
+              return result;
+            });
+            claudeHistory.push({ role: "user", content: results });
+            out.scrollTop = out.scrollHeight;
+            step();
+          } else {
+            if (res.stop_reason === "max_tokens") say("✻ (response hit the token limit)", "t-dim");
+            if (hops >= 12) say("✻ (stopped after 12 tool rounds)", "t-dim");
+            finish();
+          }
+        }).catch(function (err) {
+          thinking.remove();
+          say("✻ " + err.message, "t-err");
+          if (err.status === 401) say("  the key was rejected — reconnect via the account menu or `claude connect`", "t-dim");
+          else if (err.status === 429) say("  rate limited — wait a moment and try again", "t-dim");
+          claudeBusy = false;
+          prompt();
+        });
+      }
+      step();
+    }
+
     function exec(raw) {
       print('<span class="t-ok">' + esc(ps1Str()) + "</span> " + esc(raw));
       var line = raw.trim();
       if (!line) return;
       hist.push(raw);
       hi = hist.length;
+
+      if (claudeMode) {
+        if (claudeBusy) {
+          say("✻ still working — hang on…", "t-dim");
+          return;
+        }
+        if (/^\/?(exit|quit|q)$/i.test(line)) exitClaude();
+        else if (claudeReal) realClaudeReply(line);
+        else claudeReply(line);
+        prompt();
+        return;
+      }
+
       var parts = line.split(/\s+/);
       var cmd = parts[0], args = parts.slice(1);
       var target, node, segs, parent, name;
@@ -527,8 +869,8 @@
           say("InspireNavada devshell — available commands:", "t-dim");
           say("  ls cd pwd cat echo mkdir touch rm clear history");
           say("  git <status|log|branch>   curl <path>   open <app>   apps");
-          say("  whoami date uname neofetch sudo exit");
-          say("tip: `open editor` launches other dock apps from here.", "t-dim");
+          say("  claude   whoami date uname neofetch sudo exit");
+          say("tip: `open editor` launches other dock apps · `claude` starts a pairing session.", "t-dim");
           break;
         case "ls":
           target = args.filter(function (a) { return a[0] !== "-"; })[0];
@@ -665,6 +1007,46 @@
           );
           break;
         }
+        case "claude": {
+          if (args[0] === "--version" || args[0] === "-v") {
+            say("claude 2.1.7 (Claude Code, InspireNavada sandbox build)");
+            break;
+          }
+          if (args[0] === "connect") {
+            if (!(window.inAuth && window.inAuth.get())) {
+              say("claude: sign in first (top right), then run `claude connect`", "t-err");
+            } else if (window.claudeLink) {
+              say("opening the key panel… your key stays in this tab and goes only to api.anthropic.com", "t-dim");
+              window.claudeLink.connect();
+            }
+            break;
+          }
+          if (args[0] === "disconnect") {
+            if (window.claudeLink) window.claudeLink.disconnect();
+            say("✻ key disconnected — `claude` is back to sandbox mode", "t-dim");
+            break;
+          }
+          claudeMode = true;
+          claudeReal = !!(window.claudeLink && window.claudeLink.getKey());
+          claudeHistory = [];
+          if (claudeReal) {
+            print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· linked to your Anthropic account (' + esc(CLAUDE_MODEL) + ")</span>");
+            say("  real agent — it reads and edits this sandbox with tools · /exit to leave", "t-dim");
+          } else {
+            print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">v2.1.7 · sandbox — no API key needed in here</span>');
+            say("  ask about this repo, your todos, or hackathon № 032 · /exit to leave", "t-dim");
+            if (window.inAuth && window.inAuth.get()) {
+              say("  tip: `claude connect` links your Anthropic API key for the real thing", "t-dim");
+            }
+          }
+          print("&nbsp;");
+          var initial = raw.replace(/^\s*claude\s*/, "").replace(/^["']|["']$/g, "");
+          if (initial) {
+            if (claudeReal) realClaudeReply(initial);
+            else claudeReply(initial);
+          }
+          break;
+        }
         case "sudo":
           say(currentUser() + " is not in the sudoers file. This incident will be reported.", "t-err");
           break;
@@ -709,6 +1091,7 @@
       } else if (e.key === "c" && e.ctrlKey) {
         print('<span class="t-ok">' + esc(ps1Str()) + "</span> " + esc(input.value) + "^C");
         input.value = "";
+        if (claudeMode) exitClaude("✻ interrupted — back to zsh");
       } else if (e.key === "l" && e.ctrlKey) {
         e.preventDefault();
         out.innerHTML = "";
@@ -716,14 +1099,25 @@
     });
 
     body.addEventListener("mouseup", function () {
+      // click focuses the prompt, but a drag-selection is left alone
       if (!String(window.getSelection())) input.focus();
     });
     rec.onFocus = function () { setTimeout(function () { input.focus(); }, 0); };
 
-    say("InspireNavada devshell v1.0 — online everywhere, headquartered nowhere.", "t-dim");
-    say("Type `help` to see what works. `open <app>` launches the other dock apps.", "t-dim");
-    print("&nbsp;");
-    prompt();
+    function showWelcome() {
+      out.innerHTML = "";
+      say("InspireNavada devshell v1.0 — online everywhere, headquartered nowhere.", "t-dim");
+      say("Type `help` to see what works. `open <app>` launches the other dock apps.", "t-dim");
+      print("&nbsp;");
+      prompt();
+    }
+    // every launch starts with a clean screen; scrollback stays in the
+    // background (↑ history) rather than replaying on screen
+    rec.onRelaunch = function () {
+      showWelcome();
+      hi = hist.length;
+    };
+    showWelcome();
   }
 
   /* ── Code Editor ──────────────────────────────────────── */

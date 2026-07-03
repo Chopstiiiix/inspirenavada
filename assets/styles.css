@@ -1948,3 +1948,17 @@ body.dev-mode .dock {
 .auth-menu__item:hover { background: rgba(20, 20, 20, 0.07); }
 .auth-menu__item--out { color: var(--red); }
 .auth-menu__item--out:hover { background: rgba(200, 16, 46, 0.08); }
+
+/* terminal scrollback is selectable; make the highlight visible on dark */
+.term__out::selection,
+.term__out *::selection { background: rgba(124, 184, 255, 0.4); color: #fff; }
+
+/* claude session accent */
+.t-claude { color: #d97757; }
+
+/* key-connect modal note */
+.signin__note {
+  color: rgba(20, 20, 20, 0.5);
+  line-height: 1.5;
+  margin: 0.1rem 0 0.3rem;
+}
