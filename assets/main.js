@@ -105,8 +105,8 @@
           var housing = iswitch.querySelector(".iswitch__housing").getBoundingClientRect();
           var dx = window.innerWidth - r.right - 28;
           iswitch.style.transform = "translateX(" + dx + "px) scale(0.45)";
-          // dock sits on the same horizontal line as the switch housing
-          dock.style.top = housing.top + housing.height / 2 + "px";
+          // dock sits ~1cm below the switch's horizontal line
+          dock.style.top = housing.top + housing.height / 2 + 38 + "px";
           document.body.classList.add("dev-mode");
           devLayer.setAttribute("aria-hidden", "false");
         } else {
@@ -127,7 +127,10 @@
         syncDevMode();
       });
 
-      // dock magnification: scale falls off with cursor distance
+      // dock magnification: tiles grow in LAYOUT (width+height), so the
+      // bar expands horizontally and icons can never touch or overlap
+      var TILE = 44;
+      var GROW = 22;
       var itemCenters = function () {
         var dr = dock.getBoundingClientRect();
         return dockItems.map(function (it) {
@@ -138,11 +141,16 @@
         var cs = itemCenters();
         dockItems.forEach(function (it, i) {
           var f = Math.max(0, 1 - Math.abs(e.clientX - cs[i]) / 140);
-          it.style.transform = "translateY(" + -16 * f + "px) scale(" + (1 + 0.5 * f) + ")";
+          var size = TILE + GROW * f;
+          it.style.width = size + "px";
+          it.style.height = size + "px";
+          it.style.transform = "translateY(" + -7 * f + "px)";
         });
       });
       dock.addEventListener("mouseleave", function () {
         dockItems.forEach(function (it) {
+          it.style.width = "";
+          it.style.height = "";
           it.style.transform = "";
         });
       });
