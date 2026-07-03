@@ -1,0 +1,12 @@
+{
+  "name": "inspirenavada-devbridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local $0 bridge: runs your own claude CLI on a real folder and speaks the InspireNavada dev-mode sandbox API. No cloud, no dependencies.",
+  "type": "module",
+  "bin": { "inspirenavada-devbridge": "bridge.mjs" },
+  "scripts": {
+    "start": "node bridge.mjs"
+  },
+  "engines": { "node": ">=18" }
+}

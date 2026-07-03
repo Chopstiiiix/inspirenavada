@@ -4,6 +4,7 @@ components
 .assetsignore
 wrangler.jsonc
 sandbox-service
+devbridge
 PHASE2.md
 package.json
 package-lock.json

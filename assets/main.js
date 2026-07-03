@@ -281,7 +281,10 @@
       "Content-Type": "application/json",
       Authorization: "Bearer " + (currentSession ? currentSession.access_token : ""),
     };
-    if (withKey) h["X-Anthropic-Key"] = claudeKeyGet();
+    // Key is optional: the local bridge uses your own claude login when absent;
+    // the cloud Worker requires it and returns a clear 400 if it's missing.
+    var k = withKey ? claudeKeyGet() : "";
+    if (k) h["X-Anthropic-Key"] = k;
     return h;
   }
   function sandboxApi(path, body) {
@@ -344,7 +347,6 @@
       var url = sandboxUrl();
       if (!url) return Promise.reject(new Error("cloud sandbox not configured"));
       if (!currentSession) return Promise.reject(new Error("sign in first"));
-      if (!claudeKeyGet()) return Promise.reject(new Error("connect your Anthropic key first"));
       var ctrl = new AbortController();
       var p = fetch(url + "/api/exec", {
         method: "POST",

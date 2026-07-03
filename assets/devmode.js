@@ -1280,16 +1280,18 @@
           }
           claudeMode = true;
           claudeReal = !!(window.claudeLink && window.claudeLink.getKey());
-          claudeCloud = claudeReal && !!(window.sandbox && window.sandbox.configured());
+          // cloud/bridge mode needs only a configured sandbox URL — the backend
+          // handles auth (the local bridge uses your own claude login)
+          claudeCloud = !!(window.sandbox && window.sandbox.configured());
           claudeHistory = [];
           if (claudeCloud) {
-            print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· the real CLI, running in your cloud sandbox (' + esc(claudeModel) + ")</span>");
-            say("  full Claude Code on a real filesystem · Ctrl+C interrupts · /model switches · /exit leaves", "t-dim");
+            print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· the real CLI on a real filesystem (' + esc(claudeModel) + ")</span>");
+            say("  full Claude Code in your connected sandbox · Ctrl+C interrupts · /model switches · /exit leaves", "t-dim");
           } else if (claudeReal) {
             print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">· linked to your Anthropic account (' + esc(claudeModel) + ")</span>");
             say("  real agent — reads & edits this sandbox · Ctrl+C interrupts · /model switches · /exit leaves", "t-dim");
             if (window.sandbox && window.sandbox.url && !window.sandbox.url()) {
-              say("  tip: `sandbox set <url>` runs the actual claude CLI in a cloud container instead", "t-dim");
+              say("  tip: `sandbox set <url>` runs the actual claude CLI on your machine or a cloud container", "t-dim");
             }
           } else {
             print('<span class="t-claude">✻ Welcome to Claude Code</span> <span class="t-dim">v2.1.7 · sandbox — no API key needed in here</span>');
@@ -1332,8 +1334,9 @@
               say("  claude runs the REAL Claude Code CLI on a real filesystem here.", "t-dim");
               say("  `sandbox health` to check · `sandbox clear` to go back to the in-browser agent.", "t-dim");
             } else {
-              say("cloud sandbox: not configured", "t-dim");
-              say("  set it with `sandbox set https://inspirenavada-sandbox.<you>.workers.dev`", "t-dim");
+              say("sandbox: not configured", "t-dim");
+              say("  free & local: run `node devbridge/bridge.mjs`, then `sandbox set http://localhost:7717`", "t-dim");
+              say("  or hosted:    `sandbox set https://inspirenavada-sandbox.<you>.workers.dev`", "t-dim");
               say("  until then `claude` uses the in-browser agent (still real, but browser-side).", "t-dim");
             }
           }
