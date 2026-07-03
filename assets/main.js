@@ -122,14 +122,9 @@
         setTimeout(syncDevMode, 0);
       });
 
-      devLayer.querySelector("[data-exit]").addEventListener("click", function () {
-        swInput.checked = false;
-        syncDevMode();
-      });
-
-      // dock magnification: bar stays static, icons zoom mildly in place.
-      // max scale 1.16 on a 44px tile eats at most ~6.4px of the 9px gap
-      // across two neighbours, so icons can never touch.
+      // dock magnification: bar stays static, icons zoom in place.
+      // max scale 1.4 on a 44px tile + falloff neighbour eat at most
+      // ~13.5px of the 16px gap, so icons can never touch.
       var itemCenters = function () {
         var dr = dock.getBoundingClientRect();
         return dockItems.map(function (it) {
@@ -139,8 +134,8 @@
       dock.addEventListener("mousemove", function (e) {
         var cs = itemCenters();
         dockItems.forEach(function (it, i) {
-          var f = Math.max(0, 1 - Math.abs(e.clientX - cs[i]) / 140);
-          it.style.transform = "translateY(" + -4 * f + "px) scale(" + (1 + 0.16 * f) + ")";
+          var f = Math.max(0, 1 - Math.abs(e.clientX - cs[i]) / 130);
+          it.style.transform = "translateY(" + -8 * f + "px) scale(" + (1 + 0.4 * f) + ")";
         });
       });
       dock.addEventListener("mouseleave", function () {

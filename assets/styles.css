@@ -513,11 +513,11 @@ body.dev-mode .devmode {
   transform: translate(-50%, -50%) scale(0.92);
   display: flex;
   align-items: flex-end;
-  gap: 9px;
-  height: 62px; /* fixed: growing icons pop above the bar, never stretch it */
+  gap: 16px;
+  height: 64px; /* fixed: growing icons pop above the bar, never stretch it */
   box-sizing: border-box;
-  padding: 9px 10px;
-  border-radius: 20px;
+  padding: 10px 16px;
+  border-radius: 21px;
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(18px) saturate(1.3);
