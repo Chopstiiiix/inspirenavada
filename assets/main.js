@@ -497,6 +497,91 @@
     setTimeout(function () { signinEl.querySelector("#signin-email").focus(); }, 60);
   }
 
+  // ── mobile navigation (hamburger drawer) ────────────────
+  // Built from the existing .nav links so no per-page HTML changes are needed.
+  var masthead = document.querySelector(".masthead");
+  var primaryNav = masthead ? masthead.querySelector(".nav") : null;
+  var mobileNav = null;
+  var navToggle = null;
+
+  function closeMobileNav() {
+    if (!mobileNav) return;
+    mobileNav.classList.remove("is-open");
+    navToggle.classList.remove("is-active");
+    navToggle.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("nav-open");
+  }
+  function renderMobileAuth() {
+    if (!mobileNav) return;
+    var wrap = mobileNav.querySelector(".mobile-nav__auth");
+    var user = authGet();
+    if (user) {
+      wrap.innerHTML =
+        '<span class="mobile-nav__handle mono-sm">@' + String(user.handle).replace(/[&<>"]/g, "") + "</span>" +
+        '<button class="btn btn--ghost" type="button" id="m-signout">Sign out</button>';
+      wrap.querySelector("#m-signout").addEventListener("click", function () {
+        closeMobileNav();
+        window.inAuth.signOut();
+      });
+    } else {
+      wrap.innerHTML =
+        '<button class="btn btn--ghost" type="button" id="m-signin">Sign in</button>' +
+        '<a class="btn btn--ink" href="#join" id="m-join">Join free</a>';
+      wrap.querySelector("#m-signin").addEventListener("click", function () {
+        closeMobileNav();
+        signinOpen();
+      });
+      wrap.querySelector("#m-join").addEventListener("click", closeMobileNav);
+    }
+  }
+  function buildMobileNav() {
+    if (!masthead || !primaryNav) return;
+    navToggle = document.createElement("button");
+    navToggle.className = "nav-toggle";
+    navToggle.setAttribute("aria-label", "Menu");
+    navToggle.setAttribute("aria-expanded", "false");
+    navToggle.innerHTML = "<span></span><span></span><span></span>";
+    masthead.appendChild(navToggle);
+
+    mobileNav = document.createElement("div");
+    mobileNav.className = "mobile-nav";
+    mobileNav.innerHTML =
+      '<div class="mobile-nav__panel">' +
+        '<nav class="mobile-nav__links" aria-label="Primary"></nav>' +
+        '<div class="mobile-nav__auth"></div>' +
+      "</div>";
+    document.body.appendChild(mobileNav);
+
+    var links = mobileNav.querySelector(".mobile-nav__links");
+    Array.prototype.forEach.call(primaryNav.querySelectorAll("a"), function (a) {
+      var link = document.createElement("a");
+      link.href = a.getAttribute("href");
+      link.textContent = a.textContent;
+      if (a.classList.contains("is-active")) link.classList.add("is-active");
+      links.appendChild(link);
+    });
+
+    navToggle.addEventListener("click", function () {
+      var open = mobileNav.classList.toggle("is-open");
+      navToggle.classList.toggle("is-active", open);
+      navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      document.body.classList.toggle("nav-open", open);
+    });
+    links.addEventListener("click", function (e) {
+      if (e.target.tagName === "A") closeMobileNav();
+    });
+    mobileNav.addEventListener("click", function (e) {
+      if (e.target === mobileNav) closeMobileNav();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeMobileNav();
+    });
+    window.addEventListener("resize", function () {
+      if (window.innerWidth > 620) closeMobileNav();
+    });
+  }
+  buildMobileNav();
+
   function renderAuth() {
     if (!authActions) return;
     var user = authGet();
@@ -535,6 +620,7 @@
         signinOpen();
       });
     }
+    renderMobileAuth();
   }
   renderAuth();
 
