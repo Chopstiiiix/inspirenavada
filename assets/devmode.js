@@ -346,14 +346,17 @@
     return dock.querySelector('.dock__item[data-label="' + name + '"]');
   }
 
+  // on phones the dock lives at the bottom the whole time dev mode is on
+  function isMobile() { return window.innerWidth <= 620; }
+
   function dockShiftY() {
     var baseTop = parseFloat(dock.style.top) || window.innerHeight / 2;
     return window.innerHeight - 16 - dock.offsetHeight / 2 - baseTop;
   }
-  function setDocked(on) {
+  function setDocked(on, instant) {
     if (state.docked === on) return;
     state.docked = on;
-    dock.style.transition = "transform 0.65s cubic-bezier(0.32, 0.72, 0.28, 1)";
+    dock.style.transition = instant ? "none" : "transform 0.65s cubic-bezier(0.32, 0.72, 0.28, 1)";
     if (on) {
       dock.classList.add("dock--docked");
       dock.style.transform = "translate(-50%, -50%) translateY(" + dockShiftY() + "px)";
@@ -362,6 +365,8 @@
       dock.style.transform = "";
       setTimeout(function () { if (!state.docked) dock.style.transition = ""; }, 700);
     }
+    // drop the "none" override so later moves (resize, un-dock) animate normally
+    if (instant) requestAnimationFrame(function () { dock.style.transition = ""; });
   }
   window.addEventListener("resize", function () {
     if (!state.docked) return;
@@ -417,7 +422,8 @@
       setTimeout(function () { rec.el.remove(); }, 320);
     }
     if (focusedName === name) focusedName = null;
-    if (!Object.keys(wins).length) setDocked(false);
+    // on phones keep the dock pinned to the bottom even with no windows open
+    if (!Object.keys(wins).length && !isMobile()) setDocked(false);
   }
 
   function minimizeApp(name) {
@@ -2216,6 +2222,8 @@
     var onSwitch = function () {
       if (swInput.checked) {
         syncWorkspaceForUser();
+        // phones: dock to the bottom immediately, before any app is opened
+        if (isMobile()) setDocked(true, true);
         return;
       }
       Object.keys(wins).forEach(function (n) { closeApp(n, true); });
