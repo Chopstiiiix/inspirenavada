@@ -144,7 +144,9 @@ async function handle(req, res) {
       const args = ["--print", "--dangerously-skip-permissions", "--model", model, prompt];
       let child;
       try {
-        child = spawn(CLAUDE_BIN, args, { cwd: WORKSPACE, env });
+        // stdin: "ignore" gives claude immediate EOF so it doesn't wait 3s for
+        // piped input (the prompt is passed as an argument, not on stdin)
+        child = spawn(CLAUDE_BIN, args, { cwd: WORKSPACE, env, stdio: ["ignore", "pipe", "pipe"] });
       } catch (e) {
         send({ type: "error", error: "could not start claude: " + e.message });
         return res.end();
